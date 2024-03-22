@@ -360,6 +360,7 @@ int seek_file(int file, int off, int pos)
         return -1;
     
     struct ofile *of = idx_ofile(file);
+    struct file *f;
     if (!of->f)
         return -1;
     
@@ -373,12 +374,15 @@ int seek_file(int file, int off, int pos)
         of->off += off;
         break;
     case FP_END:
-        // 
+        f = of->f;
+        of->off = f->file_size + off;
+        if (of->off > f->file_size)
+            of->off = f->file_size;
         break;
     default:
         break;
     }
-    return ret;
+    return of->off;
 }
 
 int main(int argc, char *argv[])
@@ -421,5 +425,11 @@ int main(int argc, char *argv[])
 
     printf("close f: %d\n", close_file(fd));
     
+    fd = open_file("test_dir/a", FF_RDWR);
+    printf("open test_dir/a: %d\n", fd);
+
+    printf("seek: %d\n", seek_file(fd, 0, FP_END));
+    printf("close f: %d\n", close_file(fd));
+
     return 0;
 }
