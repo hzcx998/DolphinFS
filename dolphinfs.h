@@ -51,8 +51,6 @@
 可以提供更高一层的api取实现目录。
 */
 
-#define CONFIG_BLOCK_RAM 1
-
 #define BLOCK_AREA_SB 0
 #define BLOCK_AREA_MAN 1
 #define BLOCK_AREA_DATA 2
@@ -72,8 +70,16 @@ struct super_block
 
     unsigned long block_nr[BLOCK_AREA_MAX];
     unsigned long block_off[BLOCK_AREA_MAX];
+
+    /**
+     * 下一个可用空闲管理块
+     */
+    unsigned long next_free_man_block;
 };
 
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+
+__IO long write_block(unsigned long blk, unsigned long off, void *buf, long len);
+__IO long read_block(unsigned long blk, unsigned long off, void *buf, long len);
 
 #endif

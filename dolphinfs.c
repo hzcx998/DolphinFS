@@ -22,16 +22,14 @@ struct ofile {
 
 static struct super_block dolphin_sb;
 
+static char generic_io_block[BLOCK_SIZE];
+
 int next_file = 0;
 
 struct file file_table[MAX_FILES];
 struct ofile open_files[MAX_OPEN_FILE];
 
-/* 用于记录块id和块数据的关系数组，数组索引就是块id，数据就是块数据 */
-long *block_ids[MAX_BLOCK_NR];
-#ifdef CONFIG_BLOCK_RAM
 char *block_ram;
-#endif
 
 struct file *alloc_file(void)
 {
@@ -66,49 +64,113 @@ unsigned long get_area_nr(int area)
     return dolphin_sb.block_nr[area];
 }
 
-long alloc_block(int area)
+unsigned long scan_free_bits(unsigned long *buf, unsigned long size)
 {
-    int i;
-
-    for (i = get_area_off(area); i < get_area_nr(area); i++) {
-        if (block_ids[i] == NULL) {
-#ifdef CONFIG_BLOCK_RAM
-            block_ids[i] = (long *)&block_ram[i * BLOCK_SIZE];
-#else
-            block_ids[i] = malloc(BLOCK_SIZE);
-#endif
-            return i;
+    int i, j;
+    for (i = 0; i < size / sizeof(unsigned long); i++) {
+        if (buf[i] != 0xffffffffffffffff) {
+            for (j = 0; j < sizeof(unsigned long); j++) {
+                if (!(buf[i] & (1 << j))) {
+                    buf[i] |= (1 << j);
+                    return i * sizeof(unsigned long) + j;
+                }
+            }
         }
     }
-    return -1;
+    return size;
 }
 
-long alloc_data_block(void)
+long alloc_block(void)
 {
-    return alloc_block(BLOCK_AREA_DATA);
-}
+    /* walk all man block */
 
-long alloc_sb_block(void)
-{
-    return alloc_block(BLOCK_AREA_SB);
-}
+    unsigned long start, end, next;
+    unsigned long data_block_id;
+    int scaned = 0;
 
-int free_block(long blk)
-{
-    long i = blk;
-    if (block_ids[i] == NULL) {
-        return -1;
+    struct super_block *sb = &dolphin_sb;
+    
+    start = sb->block_off[BLOCK_AREA_MAN];
+    end = start + sb->block_nr[BLOCK_AREA_MAN];
+    
+    next = start;
+    /* fix next */
+    if (sb->next_free_man_block != 0 && sb->next_free_man_block > start && sb->next_free_man_block < end)
+        next = sb->next_free_man_block;
+
+retry:
+    for (; next < end; next++) {
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        read_block(next, 0, generic_io_block, sizeof(generic_io_block));
+        
+        data_block_id = scan_free_bits(generic_io_block, sb->block_size);
+        /* 扫描成功 */
+        if (sb->block_size != data_block_id) {
+            // printf("---> get block id:%ld\n", data_block_id);
+            /* 如果不是第一个块，就乘以块偏移 */
+            if ((next - start) != 0) 
+                data_block_id *= (next - start) * sb->block_size;
+            /* 标记下一个空闲块 */
+            sb->next_free_man_block = next;
+            
+            write_block(next, 0, generic_io_block, sizeof(generic_io_block));
+
+            // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
+            return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
+        }
     }
-#ifdef CONFIG_BLOCK_RAM
-    memset((char *)&block_ram[i * BLOCK_SIZE], 0, BLOCK_SIZE);
-#else
-    free(block_ids[i]);
-#endif
-    block_ids[i] = NULL;
+
+    /* 把后面的块都扫描完了，尝试从起始块开始扫描。 */
+    next = start;
+
+    if (!scaned) {
+        scaned = 1;
+        goto retry;
+    }
+
+    printf("!!!WARN no free block\n");
+    /* 没有空闲块，返回0，由于0是超级快，可以表示无效 */
     return 0;
 }
 
-#define blk2data(blk) block_ids[blk]
+#define alloc_data_block alloc_block
+
+int free_block(long blk)
+{
+    unsigned long man_block, byte_off, bits_off;;
+    unsigned long data_block_id, data_block_byte;
+    struct super_block *sb = &dolphin_sb;
+    
+    // printf("---> free block:%ld\n", blk);
+
+    if (blk < sb->block_off[BLOCK_AREA_DATA] || blk >= sb->block_off[BLOCK_AREA_DATA] + sb->block_nr[BLOCK_AREA_DATA])
+        return -1;
+    
+    /* 获取blk对应的索引 */
+    data_block_id = blk - sb->block_off[BLOCK_AREA_DATA];
+
+    /* 获取位偏移 */
+    bits_off = data_block_id % 8;
+
+    data_block_byte = data_block_id / 8;
+
+    /* 获取块内字节偏移 */
+    byte_off = data_block_byte % sb->block_size;
+    /* 获取块偏移 */
+    man_block = data_block_byte / sb->block_size;
+
+    /* 转换出逻辑块 */
+    man_block += sb->block_off[BLOCK_AREA_MAN];
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(man_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    generic_io_block[byte_off] &= ~(1 << bits_off);
+    /* 修改块 */
+    write_block(man_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    return 0;
+}
 
 /**
  * 1. path -> file
@@ -215,24 +277,24 @@ long get_capacity(void)
     return MAX_BLOCK_NR;
 }
 
-__IO long write_block(long blk, long off, void *buf, long len)
+__IO long write_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
     if (blk >= MAX_BLOCK_NR)
         return -1;
     
-    char *pblk = (char *)blk2data(blk);
+    char *pblk = (char *)&block_ram[blk * BLOCK_SIZE];
 
     memcpy(pblk + off, buf, len);
 
     return len;
 }
 
-__IO long read_block(long blk, long off, void *buf, long len)
+__IO long read_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    char *pblk = (char *)blk2data(blk);
+    char *pblk = (char *)&block_ram[blk * BLOCK_SIZE];
 
     memcpy(buf, pblk + off, len);
 
@@ -244,7 +306,10 @@ long get_file_block(struct file *f, unsigned long off)
     unsigned int *l1, *l2, *l3;
     unsigned int l1_val, l2_val, l3_val;
 
-    l1 = (unsigned int *)blk2data(f->data_table);
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    l1 = (unsigned int *)generic_io_block;
     assert(l1 != NULL);
 
     l1_val = l1[GET_BGD_OFF(off)];
@@ -252,15 +317,20 @@ long get_file_block(struct file *f, unsigned long off)
         l1_val = alloc_data_block();
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
+        write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
     }
 
-    l2 = (unsigned int *)blk2data(l1_val);
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+
+    l2 = (unsigned int *)generic_io_block;
     
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
         l2_val = alloc_data_block();
         l2[GET_BGD_OFF(off)] = l2_val;
         // sync block
+        write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
     }
 
     return l2_val;
@@ -436,6 +506,8 @@ void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block
     sb->block_off[BLOCK_AREA_SB] = 0;
     sb->block_off[BLOCK_AREA_MAN] = sb->block_off[BLOCK_AREA_SB] + sb->block_nr[BLOCK_AREA_SB];
     sb->block_off[BLOCK_AREA_DATA] = sb->block_off[BLOCK_AREA_MAN] + sb->block_nr[BLOCK_AREA_MAN];
+
+    sb->next_free_man_block = 0; /* invalid */
 }
 
 void dump_sb(struct super_block *sb)
@@ -447,13 +519,27 @@ void dump_sb(struct super_block *sb)
         sb->block_nr[BLOCK_AREA_SB], sb->block_nr[BLOCK_AREA_MAN], sb->block_nr[BLOCK_AREA_DATA]);
     printf("block_off: SB %ld, MAN %ld, DATA %ld\n", 
         sb->block_off[BLOCK_AREA_SB], sb->block_off[BLOCK_AREA_MAN], sb->block_off[BLOCK_AREA_DATA]);
+
+    printf("next_free_man_block: %ld\n", sb->next_free_man_block);
 }
 
+void init_man(struct super_block *sb)
+{
+    /* clear all man */
+    unsigned long start, end;
+    start = sb->block_off[BLOCK_AREA_MAN];
+    end = start + sb->block_nr[BLOCK_AREA_MAN];
+    for (; start < end; start++) {
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        write_block(start, 0, generic_io_block, sizeof(generic_io_block));
+    }
+}
 
 int main(int argc, char *argv[])
 {
     printf("hello, DolphinFS\n");
 
+    /* init disk */
     block_ram = malloc(BLOCK_DATA_SIZE);
     if (!block_ram) {
         printf("alloc block data failed!\n");
@@ -465,11 +551,13 @@ int main(int argc, char *argv[])
 
     dump_sb(&dolphin_sb);
 
-    assert(dolphin_sb.block_off[BLOCK_AREA_SB] == alloc_sb_block());
     /* write sb info to disk */
-    write_block(dolphin_sb.block_off[BLOCK_AREA_SB], 0, &dolphin_sb, sizeof(dolphin_sb));
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    memcpy(generic_io_block, &dolphin_sb, sizeof(dolphin_sb));
+    write_block(dolphin_sb.block_off[BLOCK_AREA_SB], 0, generic_io_block, sizeof(generic_io_block));
 
     /* init man info */
+    init_man(&dolphin_sb);
 
     printf("create test:%d\n", create_file("test", FM_RDWR));
     printf("create test_dir/:%d\n", create_file("test_dir/", FM_RDWR));
@@ -513,6 +601,8 @@ int main(int argc, char *argv[])
 
     printf("seek: %d\n", seek_file(fd, 0, FP_END));
     printf("close f: %d\n", close_file(fd));
+
+    dump_sb(&dolphin_sb);
 
     return 0;
 }
