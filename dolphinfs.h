@@ -46,4 +46,32 @@
 #define min(x, y) (x) < (y) ? (x) : (y)
 #define max(x, y) (x) > (y) ? (x) : (y)
 
+/*
+目录结构，只是名字带有目录，将文件名以目录的方式组合在一起。
+可以提供更高一层的api取实现目录。
+*/
+
+#define CONFIG_BLOCK_RAM 1
+
+#define BLOCK_AREA_SB 0
+#define BLOCK_AREA_MAN 1
+#define BLOCK_AREA_DATA 2
+#define BLOCK_AREA_MAX (BLOCK_AREA_DATA + 1)
+
+/**
+ * 块分区：
+ * 总块：G
+ * 超级块：1， S_OFF = 0
+ * 管理块：N = G / 8 / BLOCK_SIZE， N_OFF = S_OFF + 1
+ * 数据块：M = G - N - 1， M_OFF = N_OFF + N
+ */
+struct super_block
+{
+    unsigned long capacity;
+    unsigned long block_size;
+
+    unsigned long block_nr[BLOCK_AREA_MAX];
+    unsigned long block_off[BLOCK_AREA_MAX];
+};
+
 #endif

@@ -20,6 +20,8 @@ struct ofile {
     long off;
 };
 
+static struct super_block dolphin_sb;
+
 int next_file = 0;
 
 struct file file_table[MAX_FILES];
@@ -27,6 +29,9 @@ struct ofile open_files[MAX_OPEN_FILE];
 
 /* 用于记录块id和块数据的关系数组，数组索引就是块id，数据就是块数据 */
 long *block_ids[MAX_BLOCK_NR];
+#ifdef CONFIG_BLOCK_RAM
+char *block_ram;
+#endif
 
 struct file *alloc_file(void)
 {
@@ -51,30 +56,54 @@ struct ofile *alloc_ofile(void)
 #define ofile_idx(of) ((of) - &open_files[0])
 #define idx_ofile(idx) (&open_files[(idx)])
 
-long alloc_block(void)
+unsigned long get_area_off(int area)
+{
+    return dolphin_sb.block_off[area];
+}
+
+unsigned long get_area_nr(int area)
+{
+    return dolphin_sb.block_nr[area];
+}
+
+long alloc_block(int area)
 {
     int i;
-    for (i = 0; i < MAX_BLOCK_NR; i++) {
+
+    for (i = get_area_off(area); i < get_area_nr(area); i++) {
         if (block_ids[i] == NULL) {
+#ifdef CONFIG_BLOCK_RAM
+            block_ids[i] = block_ram[i * BLOCK_SIZE];
+#else
             block_ids[i] = malloc(BLOCK_SIZE);
-            return i + 1;
+#endif
+            return i;
         }
     }
     return -1;
 }
 
+long alloc_data_block(void)
+{
+    alloc_block(BLOCK_AREA_DATA);
+}
+
 int free_block(long blk)
 {
-    long i = blk -1;
+    long i = blk;
     if (block_ids[i] == NULL) {
         return -1;
     }
+#ifdef CONFIG_BLOCK_RAM
+    memset(block_ram[i * BLOCK_SIZE], 0, BLOCK_SIZE);
+#else
     free(block_ids[i]);
+#endif
     block_ids[i] = NULL;
     return 0;
 }
 
-#define blk2data(blk) block_ids[blk - 1]
+#define blk2data(blk) block_ids[blk]
 
 /**
  * 1. path -> file
@@ -100,7 +129,7 @@ int create_file(char *path, int mode)
         return -1;
     
     f->hash = str2hash(path);
-    f->data_table = alloc_block();
+    f->data_table = alloc_data_block();
     f->ref = 0;
     f->mode = mode;
     f->file_size = 0;
@@ -176,6 +205,11 @@ int close_file(int file)
     return 0;
 }
 
+long get_capacity(void)
+{
+    return MAX_BLOCK_NR;
+}
+
 __IO long write_block(long blk, long off, void *buf, long len)
 {
     if (blk >= MAX_BLOCK_NR)
@@ -210,7 +244,7 @@ long get_file_block(struct file *f, unsigned long off)
 
     l1_val = l1[GET_BGD_OFF(off)];
     if (!l1_val) { // alloc BMD block
-        l1_val = alloc_block();
+        l1_val = alloc_data_block();
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
     }
@@ -219,7 +253,7 @@ long get_file_block(struct file *f, unsigned long off)
     
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
-        l2_val = alloc_block();
+        l2_val = alloc_data_block();
         l2[GET_BGD_OFF(off)] = l2_val;
         // sync block
     }
@@ -385,9 +419,32 @@ int seek_file(int file, int off, int pos)
     return of->off;
 }
 
+void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block_size)
+{
+    sb->capacity = capacity;
+    sb->block_size = block_size;
+    
+    sb->block_nr[BLOCK_AREA_SB] = 1;
+    sb->block_nr[BLOCK_AREA_MAN] = capacity / 8 / block_size;
+    sb->block_nr[BLOCK_AREA_DATA] = capacity  - sb->block_nr[BLOCK_AREA_MAN] - sb->block_nr[BLOCK_AREA_SB];
+
+    sb->block_off[BLOCK_AREA_SB] = 0;
+    sb->block_off[BLOCK_AREA_MAN] = sb->block_off[BLOCK_AREA_SB] + sb->block_nr[BLOCK_AREA_SB];
+    sb->block_off[BLOCK_AREA_DATA] = sb->block_off[BLOCK_AREA_AMN] + sb->block_nr[BLOCK_AREA_MAN];
+}
+
 int main(int argc, char *argv[])
 {
     printf("hello, DolphinFS\n");
+
+    block_ram = malloc(BLOCK_DATA_SIZE);
+    if (!block_ram) {
+        printf("alloc block data failed!\n");
+        return -1;
+    }
+
+    init_sb(&dolphin_sb, get_capacity(), BLOCK_SIZE);
+
     printf("create test:%d\n", create_file("test", FM_RDWR));
     printf("create test_dir/:%d\n", create_file("test_dir/", FM_RDWR));
     printf("create test_dir/a:%d\n", create_file("test_dir/a", FM_RDWR));
