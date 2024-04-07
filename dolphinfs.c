@@ -54,16 +54,6 @@ struct ofile *alloc_ofile(void)
 #define ofile_idx(of) ((of) - &open_files[0])
 #define idx_ofile(idx) (&open_files[(idx)])
 
-unsigned long get_area_off(int area)
-{
-    return dolphin_sb.block_off[area];
-}
-
-unsigned long get_area_nr(int area)
-{
-    return dolphin_sb.block_nr[area];
-}
-
 unsigned long scan_free_bits(unsigned long *buf, unsigned long size)
 {
     int i, j;
