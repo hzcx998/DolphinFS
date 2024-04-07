@@ -74,4 +74,6 @@ struct super_block
     unsigned long block_off[BLOCK_AREA_MAX];
 };
 
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+
 #endif

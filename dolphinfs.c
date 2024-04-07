@@ -73,7 +73,7 @@ long alloc_block(int area)
     for (i = get_area_off(area); i < get_area_nr(area); i++) {
         if (block_ids[i] == NULL) {
 #ifdef CONFIG_BLOCK_RAM
-            block_ids[i] = block_ram[i * BLOCK_SIZE];
+            block_ids[i] = (long *)&block_ram[i * BLOCK_SIZE];
 #else
             block_ids[i] = malloc(BLOCK_SIZE);
 #endif
@@ -85,7 +85,12 @@ long alloc_block(int area)
 
 long alloc_data_block(void)
 {
-    alloc_block(BLOCK_AREA_DATA);
+    return alloc_block(BLOCK_AREA_DATA);
+}
+
+long alloc_sb_block(void)
+{
+    return alloc_block(BLOCK_AREA_SB);
 }
 
 int free_block(long blk)
@@ -95,7 +100,7 @@ int free_block(long blk)
         return -1;
     }
 #ifdef CONFIG_BLOCK_RAM
-    memset(block_ram[i * BLOCK_SIZE], 0, BLOCK_SIZE);
+    memset((char *)&block_ram[i * BLOCK_SIZE], 0, BLOCK_SIZE);
 #else
     free(block_ids[i]);
 #endif
@@ -215,7 +220,7 @@ __IO long write_block(long blk, long off, void *buf, long len)
     if (blk >= MAX_BLOCK_NR)
         return -1;
     
-    char *pblk = blk2data(blk);
+    char *pblk = (char *)blk2data(blk);
 
     memcpy(pblk + off, buf, len);
 
@@ -227,7 +232,7 @@ __IO long read_block(long blk, long off, void *buf, long len)
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    char *pblk = blk2data(blk);
+    char *pblk = (char *)blk2data(blk);
 
     memcpy(buf, pblk + off, len);
 
@@ -239,7 +244,7 @@ long get_file_block(struct file *f, unsigned long off)
     unsigned int *l1, *l2, *l3;
     unsigned int l1_val, l2_val, l3_val;
 
-    l1 = blk2data(f->data_table);
+    l1 = (unsigned int *)blk2data(f->data_table);
     assert(l1 != NULL);
 
     l1_val = l1[GET_BGD_OFF(off)];
@@ -249,7 +254,7 @@ long get_file_block(struct file *f, unsigned long off)
         // sync block
     }
 
-    l2 = blk2data(l1_val);
+    l2 = (unsigned int *)blk2data(l1_val);
     
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
@@ -425,13 +430,25 @@ void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block
     sb->block_size = block_size;
     
     sb->block_nr[BLOCK_AREA_SB] = 1;
-    sb->block_nr[BLOCK_AREA_MAN] = capacity / 8 / block_size;
+    sb->block_nr[BLOCK_AREA_MAN] = DIV_ROUND_UP(capacity / 8, block_size);
     sb->block_nr[BLOCK_AREA_DATA] = capacity  - sb->block_nr[BLOCK_AREA_MAN] - sb->block_nr[BLOCK_AREA_SB];
 
     sb->block_off[BLOCK_AREA_SB] = 0;
     sb->block_off[BLOCK_AREA_MAN] = sb->block_off[BLOCK_AREA_SB] + sb->block_nr[BLOCK_AREA_SB];
-    sb->block_off[BLOCK_AREA_DATA] = sb->block_off[BLOCK_AREA_AMN] + sb->block_nr[BLOCK_AREA_MAN];
+    sb->block_off[BLOCK_AREA_DATA] = sb->block_off[BLOCK_AREA_MAN] + sb->block_nr[BLOCK_AREA_MAN];
 }
+
+void dump_sb(struct super_block *sb)
+{
+    printf("==== sb info ====\n");
+    printf("capacity: %ld\n", sb->capacity);
+    printf("block_size: %ld\n", sb->block_size);
+    printf("block_nr: SB %ld, MAN %ld, DATA %ld\n", 
+        sb->block_nr[BLOCK_AREA_SB], sb->block_nr[BLOCK_AREA_MAN], sb->block_nr[BLOCK_AREA_DATA]);
+    printf("block_off: SB %ld, MAN %ld, DATA %ld\n", 
+        sb->block_off[BLOCK_AREA_SB], sb->block_off[BLOCK_AREA_MAN], sb->block_off[BLOCK_AREA_DATA]);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -443,7 +460,16 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    /* init sb info */
     init_sb(&dolphin_sb, get_capacity(), BLOCK_SIZE);
+
+    dump_sb(&dolphin_sb);
+
+    assert(dolphin_sb.block_off[BLOCK_AREA_SB] == alloc_sb_block());
+    /* write sb info to disk */
+    write_block(dolphin_sb.block_off[BLOCK_AREA_SB], 0, &dolphin_sb, sizeof(dolphin_sb));
+
+    /* init man info */
 
     printf("create test:%d\n", create_file("test", FM_RDWR));
     printf("create test_dir/:%d\n", create_file("test_dir/", FM_RDWR));

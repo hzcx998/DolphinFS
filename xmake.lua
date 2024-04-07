@@ -3,3 +3,5 @@ target("dolfs")
 
     add_files("*.c")
     add_includedirs("./")
+
+    add_cflags("-w")
