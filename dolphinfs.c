@@ -413,8 +413,8 @@ long do_write_file(struct file *f, long off, void *buf, long len)
 
         /* 将数据读取块 */
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
-        if (ret != chunk) { // 写IO失败
+        ret = read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
 
@@ -423,7 +423,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
 
         /* 将数据写入块 */
         ret = write_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
-        if (ret != chunk) { // 写IO失败
+        if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
         f->file_size += chunk;
@@ -488,8 +488,8 @@ long do_read_file(struct file *f, long off, void *buf, long len)
 
         /* 将数据读取块 */
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
-        if (ret != chunk) { // 写IO失败
+        ret = read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
 
