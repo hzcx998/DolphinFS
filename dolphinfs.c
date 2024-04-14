@@ -31,6 +31,45 @@ struct ofile open_files[MAX_OPEN_FILE];
 
 char *block_ram;
 
+int open_ram()
+{
+    block_ram = malloc(BLOCK_DATA_SIZE);
+    if (!block_ram) {
+        printf("alloc block data failed!\n");
+        return -1;
+    }
+    return 0;
+}
+
+int close_ram()
+{
+    free(block_ram);
+    return 0;
+}
+
+int get_ram_sector_size(void)
+{
+    return SECTOR_SIZE;
+}
+
+int read_ram(unsigned long lba, void *buf, unsigned long sectors)
+{
+    char *pblk = (char *)&block_ram[lba * get_ram_sector_size()];
+
+    memcpy(buf, pblk, get_ram_sector_size());
+
+    return 0;
+}
+
+int write_ram(unsigned long lba, void *buf, unsigned long sectors)
+{    
+    char *pblk = (char *)&block_ram[lba * get_ram_sector_size()];
+
+    memcpy(pblk, buf, get_ram_sector_size());
+
+    return 0;
+}
+
 struct file *alloc_file(void)
 {
     return &file_table[next_file++];
@@ -269,24 +308,40 @@ long get_capacity(void)
 
 __IO long write_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
+    int i;
+    char *p = buf;
     if (blk >= MAX_BLOCK_NR)
         return -1;
-    
-    char *pblk = (char *)&block_ram[blk * BLOCK_SIZE];
 
-    memcpy(pblk + off, buf, len);
+    char sec_buf[SECTOR_SIZE];
+
+    int nsectors = BLOCK_SIZE / SECTOR_SIZE;
+
+    for (i = 0; i < nsectors; i++) {
+        memcpy(sec_buf, p, SECTOR_SIZE);
+        write_ram(blk * nsectors + i, sec_buf, 1);
+        p += SECTOR_SIZE;
+    }
 
     return len;
 }
 
 __IO long read_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
+    int i;
+    char *p = buf;
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    char *pblk = (char *)&block_ram[blk * BLOCK_SIZE];
+    char sec_buf[SECTOR_SIZE];
 
-    memcpy(buf, pblk + off, len);
+    int nsectors = BLOCK_SIZE / SECTOR_SIZE;
+
+    for (i = 0; i < nsectors; i++) {
+        read_ram(blk * nsectors + i, sec_buf, 1);
+        memcpy(p, sec_buf, SECTOR_SIZE);
+        p += SECTOR_SIZE;
+    }
 
     return len;
 }
@@ -356,8 +411,18 @@ long do_write_file(struct file *f, long off, void *buf, long len)
         }
         phy_blk = ret;
 
+        /* 将数据读取块 */
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        if (ret != chunk) { // 写IO失败
+            return -1;
+        }
+
+        /* 拷贝数据 */
+        memcpy(generic_io_block + blk_off, pbuf, chunk);
+
         /* 将数据写入块 */
-        ret = write_block(phy_blk, blk_off, pbuf, chunk);
+        ret = write_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
         if (ret != chunk) { // 写IO失败
             return -1;
         }
@@ -422,10 +487,15 @@ long do_read_file(struct file *f, long off, void *buf, long len)
         phy_blk = ret;
 
         /* 将数据读取块 */
-        ret = read_block(phy_blk, blk_off, pbuf, chunk);
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
         if (ret != chunk) { // 写IO失败
             return -1;
         }
+
+        /* 拷贝数据 */
+        memcpy(pbuf, generic_io_block + blk_off, chunk);
+
         read_len += chunk;
         pbuf += chunk;
         next_off += chunk;
@@ -525,17 +595,8 @@ void init_man(struct super_block *sb)
     }
 }
 
-int main(int argc, char *argv[])
+int dolphin_mkfs(char *disk)
 {
-    printf("hello, DolphinFS\n");
-
-    /* init disk */
-    block_ram = malloc(BLOCK_DATA_SIZE);
-    if (!block_ram) {
-        printf("alloc block data failed!\n");
-        return -1;
-    }
-
     /* init sb info */
     init_sb(&dolphin_sb, get_capacity(), BLOCK_SIZE);
 
@@ -548,6 +609,33 @@ int main(int argc, char *argv[])
 
     /* init man info */
     init_man(&dolphin_sb);
+
+    return 0;
+}
+
+int dolphin_mount(char *disk, struct super_block *sb)
+{
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(0, 0, generic_io_block, sizeof(generic_io_block));
+    memcpy(sb, generic_io_block, sizeof(struct super_block));
+
+    dump_sb(sb);
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    printf("hello, DolphinFS\n");
+
+    /* init disk */
+    open_ram();
+
+    /* 创建文件系统 */
+    dolphin_mkfs(block_ram);
+
+    /* 挂载文件系统 */
+    dolphin_mount(block_ram, &dolphin_sb);
 
     printf("create test:%d\n", create_file("test", FM_RDWR));
     printf("create test_dir/:%d\n", create_file("test_dir/", FM_RDWR));
@@ -593,6 +681,8 @@ int main(int argc, char *argv[])
     printf("close f: %d\n", close_file(fd));
 
     dump_sb(&dolphin_sb);
+
+    close_ram();
 
     return 0;
 }

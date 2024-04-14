@@ -82,4 +82,6 @@ struct super_block
 __IO long write_block(unsigned long blk, unsigned long off, void *buf, long len);
 __IO long read_block(unsigned long blk, unsigned long off, void *buf, long len);
 
+#define SECTOR_SIZE 512
+
 #endif
