@@ -22,3 +22,14 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
 * 测试文件读写性能
 * 添加块缓存
 * 添加tlb缓存，提高文件命中率
+
+## 框架
+
+- 文件 API
+    * FS_OpenFile, FS_CloseFile, FS_ReadFile, FS_WriteFile, FS_SeekFile, FS_CreateFile, FS_RemoveFile,
+    * (Opt) FS_RenameFile, FS_CopyFile
+    * (Opt) FS_OpenDir, FS_CloseDir, FS_RewindDir, FS_ReadDir
+- 块 API（后续考虑和DeviceIO兼容）
+    * IO_OpenBlock, IO_CloseBlock, IO_ReadBlock, IO_WriteBlock
+    * (Opt) IO_SyncBlock
+
