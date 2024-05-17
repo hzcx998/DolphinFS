@@ -30,6 +30,7 @@ struct super_block
 long alloc_block(void);
 int free_block(long blk);
 #define alloc_data_block alloc_block
+#define free_data_block free_block
 
 void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block_size);
 void dump_sb(struct super_block *sb);

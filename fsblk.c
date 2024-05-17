@@ -8,6 +8,7 @@
 struct super_block dolphin_sb;
 
 char generic_io_block[BLOCK_SIZE];
+char allocator_io_block[BLOCK_SIZE];
 
 unsigned long scan_free_bits(unsigned long *buf, unsigned long size)
 {
@@ -45,10 +46,10 @@ long alloc_block(void)
 
 retry:
     for (; next < end; next++) {
-        memset(generic_io_block, 0, sizeof(generic_io_block));
-        read_block(next, 0, generic_io_block, sizeof(generic_io_block));
+        memset(allocator_io_block, 0, sizeof(allocator_io_block));
+        read_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
         
-        data_block_id = scan_free_bits(generic_io_block, sb->block_size);
+        data_block_id = scan_free_bits(allocator_io_block, sb->block_size);
         /* 扫描成功 */
         if (sb->block_size != data_block_id) {
             // printf("---> get block id:%ld\n", data_block_id);
@@ -58,7 +59,7 @@ retry:
             /* 标记下一个空闲块 */
             sb->next_free_man_block = next;
             
-            write_block(next, 0, generic_io_block, sizeof(generic_io_block));
+            write_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
 
             // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
             return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
@@ -105,12 +106,12 @@ int free_block(long blk)
     /* 转换出逻辑块 */
     man_block += sb->block_off[BLOCK_AREA_MAN];
 
-    memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(man_block, 0, generic_io_block, sizeof(generic_io_block));
+    memset(allocator_io_block, 0, sizeof(allocator_io_block));
+    read_block(man_block, 0, allocator_io_block, sizeof(allocator_io_block));
 
-    generic_io_block[byte_off] &= ~(1 << bits_off);
+    allocator_io_block[byte_off] &= ~(1 << bits_off);
     /* 修改块 */
-    write_block(man_block, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(man_block, 0, allocator_io_block, sizeof(allocator_io_block));
 
     return 0;
 }

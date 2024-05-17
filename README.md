@@ -9,10 +9,10 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
 * 基于bitmap的块管理
 * 基于ram的块管理
 * 基础的文件open，close，read，write操作
+* 文件删除功能
 
 ## TODO
 
-* 文件删除功能
 * 基于磁盘块的功能
 * 将文件表纳入块管理
 * 添加格式化功能

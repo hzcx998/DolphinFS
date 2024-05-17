@@ -5,21 +5,32 @@
 #include <string.h>
 #include <assert.h>
 
-char *block_ram;
+#define CONFIG_STATIC_RAM 0
+
+#if CONFIG_STATIC_RAM == 1
+unsigned char block_ram[BLOCK_DATA_SIZE] = {0};
+#else
+unsigned char *block_ram;
+#endif
 
 int open_ram()
 {
+#if CONFIG_STATIC_RAM == 0
     block_ram = malloc(BLOCK_DATA_SIZE);
     if (!block_ram) {
         printf("alloc block data failed!\n");
         return -1;
     }
+    memset(block_ram, 0, BLOCK_DATA_SIZE);
+#endif
     return 0;
 }
 
 int close_ram()
 {
+#if CONFIG_STATIC_RAM == 0
     free(block_ram);
+#endif
     return 0;
 }
 
@@ -30,7 +41,7 @@ int get_ram_sector_size(void)
 
 int read_ram(unsigned long lba, void *buf, unsigned long sectors)
 {
-    char *pblk = (char *)&block_ram[lba * get_ram_sector_size()];
+    unsigned char *pblk = (unsigned char *)&block_ram[lba * get_ram_sector_size()];
 
     memcpy(buf, pblk, get_ram_sector_size());
 
@@ -39,7 +50,7 @@ int read_ram(unsigned long lba, void *buf, unsigned long sectors)
 
 int write_ram(unsigned long lba, void *buf, unsigned long sectors)
 {    
-    char *pblk = (char *)&block_ram[lba * get_ram_sector_size()];
+    unsigned char *pblk = (unsigned char *)&block_ram[lba * get_ram_sector_size()];
 
     memcpy(pblk, buf, get_ram_sector_size());
 
@@ -54,11 +65,13 @@ long get_capacity(void)
 __IO long write_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
     int i;
-    char *p = buf;
+    unsigned char *p = buf;
+
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    char sec_buf[SECTOR_SIZE];
+    unsigned char sec_buf[SECTOR_SIZE];
+    memset(sec_buf, 0, SECTOR_SIZE);
 
     int nsectors = BLOCK_SIZE / SECTOR_SIZE;
 
@@ -74,11 +87,12 @@ __IO long write_block(unsigned long blk, unsigned long off, void *buf, long len)
 __IO long read_block(unsigned long blk, unsigned long off, void *buf, long len)
 {
     int i;
-    char *p = buf;
+    unsigned char *p = buf;
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    char sec_buf[SECTOR_SIZE];
+    unsigned char sec_buf[SECTOR_SIZE];
+    memset(sec_buf, 0, SECTOR_SIZE);
 
     int nsectors = BLOCK_SIZE / SECTOR_SIZE;
 

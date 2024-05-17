@@ -34,6 +34,7 @@ struct ofile {
     long off;
 };
 
+void dump_all_file(void);
 int create_file(char *path, int mode);
 int delete_file(char *path);
 int open_file(char *path, int flags);

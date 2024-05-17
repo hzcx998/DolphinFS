@@ -8,7 +8,7 @@
 #define BLOCK_SHIFT 12 
 #define BLOCK_SIZE (1 << BLOCK_SHIFT) /* 4kb block */
 #define BLOCK_MASK (BLOCK_SIZE - 1)
-#define GET_BLOCK_OFF(addr) (((addr) & BLOCK_MASK)) 
+#define GET_BLOCK_OFF(addr) (((addr) & BLOCK_MASK) >> 0) 
 
 #define BMD_SHIFT (BLOCK_SHIFT + 10)
 #define BMD_SIZE (1 << BMD_SHIFT)

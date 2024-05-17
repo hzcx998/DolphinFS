@@ -5,6 +5,8 @@
 #include <string.h>
 #include <assert.h>
 
+extern struct super_block dolphin_sb;
+
 extern char generic_io_block[BLOCK_SIZE];
 
 int next_file = 0;
@@ -12,9 +14,34 @@ int next_file = 0;
 struct file file_table[MAX_FILES];
 struct ofile open_files[MAX_OPEN_FILE];
 
+long free_file_block(struct file *f, unsigned long off);
+long walk_file_block(struct file *f, unsigned long off);
+
 struct file *alloc_file(void)
 {
     return &file_table[next_file++];
+}
+
+void free_file(struct file *file)
+{
+    file->data_table = -1;
+    file->hash = 0;
+    /* TODO: free file solt */
+}
+
+void dump_all_file(void)
+{
+    int i;
+    struct file *f;
+    
+    printf("==== dump files ====\n");
+    for (i = 0; i < MAX_FILES; i++) {
+        f = &file_table[i];
+        if (f->hash != 0) {
+            printf("  [%d] hash:%p, table:%lld, size:%lld, ref:%d, mode:%x\n",
+                i, f->hash, f->data_table, f->file_size, f->ref, f->mode);
+        }
+    }
 }
 
 #define file_idx(f) ((f) - &file_table[0])
@@ -64,19 +91,10 @@ int create_file(char *path, int mode)
     f->mode = mode;
     f->file_size = 0;
     if (f->data_table < 0) {
-        // TODO: free file
+        free_file(f);
         return -1;
     }
     return file_idx(f);
-}
-
-int delete_file(char *path)
-{
-    /* 1. 删除文件数据 */
-
-    /* 2. 删除文件结构 */
-
-    /*  */
 }
 
 struct file *search_file(char *path)
@@ -93,6 +111,60 @@ struct file *search_file(char *path)
         }
     }
     return NULL;
+}
+
+static int check_empty_u32(unsigned int *table, unsigned long size)
+{
+    int i;
+    for (i = 0; i < size; i++) {
+        if (table[i] != 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int delete_file(char *path)
+{
+    if (!path || !strlen(path))
+        return -1;
+    
+    struct file *f = search_file(path);
+    if (!f) {
+        return -1;
+    }
+
+    /* 1. 删除文件数据 */
+    if (f->file_size > 0) {
+        unsigned long blocks;
+        blocks = DIV_ROUND_UP(f->file_size, dolphin_sb.block_size);
+        int i;
+
+        for (i = 0; i < blocks; i++) {
+            long ret = walk_file_block(f, i * dolphin_sb.block_size);
+            assert(ret > 0);
+        }
+        for (i = 0; i < blocks; i++) {
+            long ret = free_file_block(f, i * dolphin_sb.block_size);
+            if (ret != 0) {
+                printf("[ERR] delete_file: free block %d failed with %d\n", i, ret);
+            }
+        }
+    }
+    
+    assert(f->data_table > 0);
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    assert(check_empty_u32(generic_io_block, sizeof(generic_io_block) / sizeof(unsigned int)));
+
+    /* free data table */
+    free_block(f->data_table);
+
+    /* 2. 删除文件结构 */
+    free_file(f);
+    return 0;
 }
 
 int open_file(char *path, int flags)
@@ -137,8 +209,8 @@ int close_file(int file)
 
 long get_file_block(struct file *f, unsigned long off)
 {
-    unsigned int *l1, *l2, *l3;
-    unsigned int l1_val, l2_val, l3_val;
+    unsigned int *l1, *l2;
+    unsigned int l1_val, l2_val;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
     read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
@@ -152,6 +224,10 @@ long get_file_block(struct file *f, unsigned long off)
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
         write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+        // clear new block   
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
     }
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
@@ -162,12 +238,109 @@ long get_file_block(struct file *f, unsigned long off)
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
         l2_val = alloc_data_block();
-        l2[GET_BGD_OFF(off)] = l2_val;
+        l2[GET_BMD_OFF(off)] = l2_val;
         // sync block
         write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+
+        // clear new block   
+        memset(generic_io_block, 0, sizeof(generic_io_block));
+        write_block(l2_val, 0, generic_io_block, sizeof(generic_io_block));
     }
 
     return l2_val;
+}
+
+long walk_file_block(struct file *f, unsigned long off)
+{
+    unsigned int *l1, *l2;
+    unsigned int l1_val, l2_val;
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    l1 = (unsigned int *)generic_io_block;
+    assert(l1 != NULL);
+
+    l1_val = l1[GET_BGD_OFF(off)];
+    if (!l1_val) { // alloc BMD block
+        printf("ERR off:%d, l1_val:%d\n", off, l1_val);
+        return 0;
+    }
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+
+    l2 = (unsigned int *)generic_io_block;
+
+    l2_val = l2[GET_BMD_OFF(off)];
+    if (!l2_val) { // alloc data block
+        printf("ERR off:%d->%d, l2_val:%d\n", off, GET_BMD_OFF(off), l2_val);
+        return 0;
+    }
+
+    return l2_val;
+}
+
+long free_file_block(struct file *f, unsigned long off)
+{
+    unsigned int *l1, *l2;
+    unsigned int l1_val, l2_val;
+    int i;
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    l1 = (unsigned int *)generic_io_block;
+    if (l1 == NULL) {
+        return -1;
+    }
+
+    l1_val = l1[GET_BGD_OFF(off)];
+    if (!l1_val) { // none BMD block
+        return -2;
+    }
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+
+    l2 = (unsigned int *)generic_io_block;
+    
+    l2_val = l2[GET_BMD_OFF(off)];
+    if (!l2_val) { // none data block
+        return -3;
+    }
+
+    /* free data block */
+    free_data_block(l2_val);
+
+    l2[GET_BMD_OFF(off)] = 0; /* clear data block in l2 */
+
+    // sync block
+    write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+
+    /* check l2 empty? */
+    if (!check_empty_u32(generic_io_block, sizeof(generic_io_block) / sizeof(unsigned int))) {
+        return 0;
+    }
+
+    /* l2 empty !*/
+
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    l1 = (unsigned int *)generic_io_block;
+
+    /* free l2 block */
+    free_block(l1_val);
+
+    // printf("%s:%d: free l2 block: %d at %d\n", __func__, __LINE__, l1_val, l2_val);
+
+    l1[GET_BGD_OFF(off)] = 0; /* clear l2 block in l1 */
+
+    // sync block
+    write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
+    return 0;
 }
 
 /**
@@ -215,7 +388,12 @@ long do_write_file(struct file *f, long off, void *buf, long len)
         if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
-        f->file_size += chunk;
+
+        /* 只有在偏移+chunk大小超过文件大小的时候，才去更新文件大小 */
+        if (next_off + chunk > f->file_size) {
+            f->file_size = next_off + chunk;
+        }
+
         write_len += chunk;
         pbuf += chunk;
         next_off += chunk;

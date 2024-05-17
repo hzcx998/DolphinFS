@@ -5,7 +5,7 @@
 #include <string.h>
 #include <assert.h>
 
-extern char *block_ram;
+extern unsigned char *block_ram;
 extern struct super_block dolphin_sb;
 
 int main(int argc, char *argv[])
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
     printf("open test_dir/a: %d\n", fd);
 
     printf("write: %d\n", write_file(fd, "hello", 5));
-    printf("seek: %d\n", seek_file(fd, 0, FP_SET));
+    printf("seek: %d\n", seek_file(fd, 0, FP_END));
     printf("seek: %d\n", seek_file(fd, 0, FP_SET));
     char buf[32] = {0};
     printf("read: %d\n", read_file(fd, buf, 32));
@@ -60,9 +60,23 @@ int main(int argc, char *argv[])
     
     fd = open_file("test_dir/a", FF_RDWR);
     printf("open test_dir/a: %d\n", fd);
+    
+    printf("seek: %d\n", seek_file(fd, 1, FP_SET));
+    int j;
+    for (j = 0; j < 10; j++) {
+        write_file(fd, buf, 4096);
+    }
 
     printf("seek: %d\n", seek_file(fd, 0, FP_END));
     printf("close f: %d\n", close_file(fd));
+
+    dump_all_file();
+    delete_file("test_dir/a");
+    dump_all_file();
+    delete_file("test_dir/");
+    dump_all_file();
+    delete_file("test");
+    dump_all_file();
 
     dump_sb(&dolphin_sb);
 
