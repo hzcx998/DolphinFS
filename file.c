@@ -8,6 +8,7 @@
 extern struct super_block dolphin_sb;
 
 extern char generic_io_block[BLOCK_SIZE];
+extern char allocator_io_block[BLOCK_SIZE];
 
 int next_file = 0;
 
@@ -16,6 +17,81 @@ struct ofile open_files[MAX_OPEN_FILE];
 
 long free_file_block(struct file *f, unsigned long off);
 long walk_file_block(struct file *f, unsigned long off);
+
+long alloc_file_num(void)
+{
+    /* walk all man block */
+
+    unsigned long start, end, next;
+    unsigned long file_num;
+
+    struct super_block *sb = &dolphin_sb;
+    
+    start = sb->file_bitmap_start;
+    end = sb->file_bitmap_end;
+    
+    next = start;
+
+    for (; next < end; next++) {
+        memset(allocator_io_block, 0, sizeof(allocator_io_block));
+        read_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
+        
+        file_num = scan_free_bits(allocator_io_block, sb->block_size);
+        /* 扫描成功 */
+        if (sb->block_size != file_num) {
+            // printf("---> get block id:%ld\n", data_block_id);
+            /* 如果不是第一个块，就乘以块偏移 */
+            if ((next - start) != 0) 
+                file_num += (next - start) * sb->block_size;
+
+            write_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
+
+            // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
+            if (file_num < sb->file_count) {
+                return file_num;
+            } else {
+                return -1;
+            }
+        }
+    }
+
+    printf("!!!WARN no free file\n");
+    return -1;
+}
+
+int free_file_num(long file_num)
+{
+    unsigned long bmap_block, byte_off, bits_off;;
+    unsigned long data_block_id, data_block_byte;
+    struct super_block *sb = &dolphin_sb;
+    
+    // printf("---> free block:%ld\n", blk);
+
+    if (file_num < 0 || file_num >= sb->file_count)
+        return -1;
+    
+    /* 获取位偏移 */
+    bits_off = file_num % 8;
+
+    data_block_byte = file_num / 8;
+
+    /* 获取块内字节偏移 */
+    byte_off = data_block_byte % sb->block_size;
+    /* 获取块偏移 */
+    bmap_block = data_block_byte / sb->block_size;
+
+    /* 转换出逻辑块 */
+    bmap_block += sb->file_bitmap_start;
+
+    memset(allocator_io_block, 0, sizeof(allocator_io_block));
+    read_block(bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
+
+    allocator_io_block[byte_off] &= ~(1 << bits_off);
+    /* 修改块 */
+    write_block(bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
+
+    return 0;
+}
 
 struct file *alloc_file(void)
 {
@@ -27,6 +103,7 @@ void free_file(struct file *file)
     file->data_table = -1;
     file->hash = 0;
     /* TODO: free file solt */
+    free_file_num(file->num);
 }
 
 void dump_all_file(void)

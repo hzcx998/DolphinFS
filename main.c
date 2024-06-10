@@ -80,6 +80,22 @@ int main(int argc, char *argv[])
 
     dump_sb(&dolphin_sb);
 
+    // long num = alloc_file_num();
+    // printf("alloc num: %ld\n", num);
+    // printf("free num: %ld\n", free_file_num(num));
+    // num = alloc_file_num();
+    // printf("alloc num: %ld\n", num);
+    // printf("free num: %ld\n", free_file_num(num));
+    // num = alloc_file_num();
+    // printf("alloc num: %ld\n", num);
+    // printf("free num: %ld\n", free_file_num(num));
+
+    // long num_table[MAX_FILES + 1];
+    // for (j = 0; j < MAX_FILES + 1; j++) {
+    //     num_table[j] = alloc_file_num();
+    //     printf("alloc num: %ld\n", num_table[j]);
+    // }
+
     close_ram();
 
     return 0;

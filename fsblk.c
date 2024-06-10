@@ -55,14 +55,18 @@ retry:
             // printf("---> get block id:%ld\n", data_block_id);
             /* 如果不是第一个块，就乘以块偏移 */
             if ((next - start) != 0) 
-                data_block_id *= (next - start) * sb->block_size;
+                data_block_id += (next - start) * sb->block_size;
             /* 标记下一个空闲块 */
             sb->next_free_man_block = next;
             
             write_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
 
             // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
-            return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
+            if (data_block_id < sb->block_nr[BLOCK_AREA_DATA]) {
+                return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
+            } else {
+                return 0;
+            }
         }
     }
 

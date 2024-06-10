@@ -27,6 +27,7 @@ struct file {
     unsigned long file_size;
     int ref;
     int mode; /* r,w,rw */
+    int num; /* 文件编号 */
 };
 
 /* open file */
@@ -45,5 +46,8 @@ long write_file(int file, void *buf, long len);
 long read_file(int file, void *buf, long len);
 int seek_file(int file, int off, int pos);
 
+
+long alloc_file_num(void);
+int free_file_num(long file_num);
 
 #endif
