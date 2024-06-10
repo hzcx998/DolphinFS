@@ -10,9 +10,6 @@ extern struct super_block dolphin_sb;
 extern char generic_io_block[BLOCK_SIZE];
 extern char allocator_io_block[BLOCK_SIZE];
 
-int next_file = 0;
-
-struct file file_table[MAX_FILES];
 struct ofile open_files[MAX_OPEN_FILE];
 
 long free_file_block(struct file *f, unsigned long off);
@@ -93,17 +90,83 @@ int free_file_num(long file_num)
     return 0;
 }
 
-struct file *alloc_file(void)
+int load_file_info(struct file *file, long num)
 {
-    return &file_table[next_file++];
+    struct file *file_table;
+    struct super_block *sb = &dolphin_sb;
+    unsigned long file_info_block, block_off;
+    unsigned long file_count_in_block;
+
+    file_count_in_block = sb->block_size / sizeof(struct file);
+
+    block_off = num % file_count_in_block;
+    file_info_block = num / file_count_in_block;
+    file_info_block += sb->file_info_start;
+
+    /* 通过file_info_block读取文件所在的块 */
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    /* 通过block_off定位某个文件 */
+    file_table = (struct file *)generic_io_block;
+    *file = file_table[block_off];
+    return 0;
 }
 
-void free_file(struct file *file)
+int sync_file_info(struct file *file, long num)
 {
-    file->data_table = -1;
-    file->hash = 0;
-    /* TODO: free file solt */
+    struct file *file_table;
+    struct super_block *sb = &dolphin_sb;
+    unsigned long file_info_block, block_off;
+    unsigned long file_count_in_block;
+
+    file_count_in_block = sb->block_size / sizeof(struct file);
+
+    block_off = num % file_count_in_block;
+    file_info_block = num / file_count_in_block;
+    file_info_block += sb->file_info_start;
+
+    /* 通过file_info_block读取文件所在的块 */
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    /* 通过block_off定位某个文件 */
+    file_table = (struct file *)generic_io_block;
+    file_table[block_off] = *file;
+
+    write_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    return 0;
+}
+
+/**
+ * 分配一个文件号，并分配内存保存数据
+ */
+struct file *alloc_file(void)
+{
+    long num = alloc_file_num();
+    if (num < 0) {
+        return NULL;
+    }
+    /* load file num from disk */
+    struct file *f = malloc(sizeof(struct file));
+    f->num = num;
+    return f;
+}
+
+/**
+ * 释放文件号，并释放内存
+ */
+void free_file(struct file *file, int sync)
+{
+    if (sync) {
+        struct file empty_file;
+        memset(&empty_file, 0, sizeof(struct file));
+        sync_file_info(&empty_file, file->num);
+    }
     free_file_num(file->num);
+
+    free(file);
 }
 
 void dump_all_file(void)
@@ -112,16 +175,17 @@ void dump_all_file(void)
     struct file *f;
     
     printf("==== dump files ====\n");
-    for (i = 0; i < MAX_FILES; i++) {
-        f = &file_table[i];
+    struct super_block *sb = &dolphin_sb;
+    struct file tmp_file;
+    for (i = 0; i < sb->file_count; i++) {
+        load_file_info(&tmp_file, i);
+        f = &tmp_file;
         if (f->hash != 0) {
             printf("  [%d] hash:%p, table:%lld, size:%lld, ref:%d, mode:%x\n",
                 i, f->hash, f->data_table, f->file_size, f->ref, f->mode);
         }
-    }
+    } 
 }
-
-#define file_idx(f) ((f) - &file_table[0])
 
 struct ofile *alloc_ofile(void)
 {
@@ -153,14 +217,14 @@ unsigned long str2hash(unsigned char *str)
     return hash;
 }
 
-int create_file(char *path, int mode)
+static struct file *create_file(char *path, int mode)
 {
     if (!path || !strlen(path) || !mode)
-        return -1;
+        return NULL;
 
     struct file *f = alloc_file();
     if (!f)
-        return -1;
+        return NULL;
     
     f->hash = str2hash(path);
     f->data_table = alloc_data_block();
@@ -168,25 +232,35 @@ int create_file(char *path, int mode)
     f->mode = mode;
     f->file_size = 0;
     if (f->data_table < 0) {
-        free_file(f);
-        return -1;
+        free_file(f, 0);
+        return NULL;
     }
-    return file_idx(f);
+
+    /* sync file to disk */
+    sync_file_info(f, f->num);
+
+    return f;
 }
 
-struct file *search_file(char *path)
+static struct file *search_file(char *path)
 {
     if (!path || !strlen(path))
         return NULL;
 
     int i;
-    struct file *f;
-    for (i = 0; i < next_file; i++) {
-        f = &file_table[i];
+    struct file *f = malloc(sizeof(struct file));
+    if (!f) {
+        return NULL;
+    }
+    struct super_block *sb = &dolphin_sb;
+    for (i = 0; i < sb->file_count; i++) {
+        load_file_info(f, i);
         if (f->hash == str2hash(path)) {
             return f;
         }
     }
+
+    free(f);
     return NULL;
 }
 
@@ -208,6 +282,7 @@ int delete_file(char *path)
     
     struct file *f = search_file(path);
     if (!f) {
+        printf("delete: err: file %s not found\n", path);
         return -1;
     }
 
@@ -240,7 +315,7 @@ int delete_file(char *path)
     free_block(f->data_table);
 
     /* 2. 删除文件结构 */
-    free_file(f);
+    free_file(f, 1);
     return 0;
 }
 
@@ -251,7 +326,15 @@ int open_file(char *path, int flags)
     
     struct file *f = search_file(path);
     if (!f) {
-        return -1;
+        /* file not found, create new */
+        if (flags & FF_CRATE) {
+            f = create_file(path, flags & FF_RDWR);
+            if (!f) {
+                return -1;
+            }
+        } else {
+            return -1;
+        }
     }
     struct ofile *of = alloc_ofile();
     if (!of)
@@ -262,6 +345,7 @@ int open_file(char *path, int flags)
     of->off = 0;
 
     f->ref++;
+    sync_file_info(f, f->num);
 
     return ofile_idx(of);
 }
@@ -279,6 +363,9 @@ int close_file(int file)
 
     of->oflags = 0;
     of->off = 0;
+    sync_file_info(of->f, of->f->num);
+    /* 释放文件信息内存 */
+    free(of->f);
     of->f = NULL;
 
     return 0;
@@ -469,6 +556,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
         /* 只有在偏移+chunk大小超过文件大小的时候，才去更新文件大小 */
         if (next_off + chunk > f->file_size) {
             f->file_size = next_off + chunk;
+            sync_file_info(f, f->num);
         }
 
         write_len += chunk;

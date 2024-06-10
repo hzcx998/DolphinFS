@@ -16,6 +16,7 @@
 #define FF_READ 0X01
 #define FF_WRITE 0X02
 #define FF_RDWR (FF_READ | FF_WRITE)
+#define FF_CRATE 0X10
 
 #define FP_SET 1
 #define FP_CUR 2
@@ -38,7 +39,6 @@ struct ofile {
 };
 
 void dump_all_file(void);
-int create_file(char *path, int mode);
 int delete_file(char *path);
 int open_file(char *path, int flags);
 int close_file(int file);

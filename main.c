@@ -21,11 +21,7 @@ int main(int argc, char *argv[])
     /* 挂载文件系统 */
     dolphin_mount(block_ram, &dolphin_sb);
 
-    printf("create test:%d\n", create_file("test", FM_RDWR));
-    printf("create test_dir/:%d\n", create_file("test_dir/", FM_RDWR));
-    printf("create test_dir/a:%d\n", create_file("test_dir/a", FM_RDWR));
-
-    int fd = open_file("test", FF_RDWR);
+    int fd = open_file("test", FF_RDWR | FF_CRATE);
     printf("open test: %d\n", fd);
     
     printf("close f: %d\n", close_file(fd));
@@ -34,11 +30,11 @@ int main(int argc, char *argv[])
     printf("open test_dir: %d\n", fd);
     printf("close f: %d\n", close_file(fd));
     
-    fd = open_file("test_dir/", FF_RDWR);
+    fd = open_file("test_dir/", FF_RDWR | FF_CRATE);
     printf("open test_dir/: %d\n", fd);
     printf("close f: %d\n", close_file(fd));
 
-    fd = open_file("test_dir/a", FF_RDWR);
+    fd = open_file("test_dir/a", FF_RDWR | FF_CRATE);
     printf("open test_dir/a: %d\n", fd);
 
     printf("write: %d\n", write_file(fd, "hello", 5));
@@ -58,8 +54,8 @@ int main(int argc, char *argv[])
 
     printf("close f: %d\n", close_file(fd));
     
-    fd = open_file("test_dir/a", FF_RDWR);
-    printf("open test_dir/a: %d\n", fd);
+    fd = open_file("test_dir/", FF_RDWR);
+    printf("open test_dir/: %d\n", fd);
     
     printf("seek: %d\n", seek_file(fd, 1, FP_SET));
     int j;
