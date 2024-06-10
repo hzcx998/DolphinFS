@@ -25,6 +25,18 @@ struct super_block
      * 下一个可用空闲管理块
      */
     unsigned long next_free_man_block;
+    /**
+     * 支持的文件数量
+     */
+    unsigned long file_count;
+    /**
+     * 文件管理信息和位图
+     */
+    unsigned long file_bitmap_start;
+    unsigned long file_bitmap_end;
+
+    unsigned long file_info_start;
+    unsigned long file_info_end;
 };
 
 long alloc_block(void);
@@ -35,5 +47,6 @@ int free_block(long blk);
 void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block_size);
 void dump_sb(struct super_block *sb);
 void init_man(struct super_block *sb);
+void init_file_info(struct super_block *sb, unsigned long file_count);
 
 #endif

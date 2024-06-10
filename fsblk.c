@@ -143,6 +143,8 @@ void dump_sb(struct super_block *sb)
         sb->block_off[BLOCK_AREA_SB], sb->block_off[BLOCK_AREA_MAN], sb->block_off[BLOCK_AREA_DATA]);
 
     printf("next_free_man_block: %ld\n", sb->next_free_man_block);
+    printf("file_bitmap_start: %ld, file_bitmap_end: %ld\n", sb->file_bitmap_start, sb->file_bitmap_end);
+    printf("file_info_start: %ld, file_info_end: %ld\n", sb->file_info_start, sb->file_info_end);
 }
 
 void init_man(struct super_block *sb)
@@ -155,4 +157,55 @@ void init_man(struct super_block *sb)
         memset(generic_io_block, 0, sizeof(generic_io_block));
         write_block(start, 0, generic_io_block, sizeof(generic_io_block));
     }
+}
+
+void init_file_info(struct super_block *sb, unsigned long file_count)
+{
+    /* 
+    根据文件数量创建文件节点，并通过位图来管理文件节点的分配状态。
+    也就是需要要创建2组内容，一组是管理文件分配的位图块。一组是管理文件内容的数据块。
+     */
+
+    /**00
+     * 计算文件信息占用的空间
+     */
+    unsigned long file_info_blocks = DIV_ROUND_UP(file_count * sizeof(struct file), BLOCK_SIZE);
+    assert(file_info_blocks > 0);
+
+    /**
+     * 计算文件分配位图
+     */
+    unsigned long file_bmap_bits = DIV_ROUND_UP(file_info_blocks, 8);
+    unsigned long file_bmap_blocks = DIV_ROUND_UP(file_bmap_bits, BLOCK_SIZE);
+    assert(file_bmap_blocks > 0);
+
+    sb->file_count = file_count;
+    /**
+     * 分配文件位块
+     */
+    long block;
+    int i;
+
+    sb->file_bitmap_start = 0;
+    for (i = 0; i < file_bmap_blocks; i++) {
+        block = alloc_data_block();
+        assert(block > 0);
+        if (!sb->file_bitmap_start) {
+            sb->file_bitmap_start = block;
+        }
+    }
+    sb->file_bitmap_end = sb->file_bitmap_start + file_bmap_blocks;
+    
+    /**
+     * 分配文件信息块
+     */
+    sb->file_info_start = 0;
+    for (i = 0; i < file_info_blocks; i++) {
+        block = alloc_data_block();
+        assert(block > 0);
+        if (!sb->file_info_start) {
+            sb->file_info_start = block;
+        }
+    }
+    sb->file_info_end = sb->file_info_start + file_info_blocks;
 }
