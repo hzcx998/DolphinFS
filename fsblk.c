@@ -206,6 +206,11 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     }
     sb->file_bitmap_end = sb->file_bitmap_start + file_bmap_blocks;
     
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    for (i = 0; i < file_bmap_blocks; i++) {
+        write_block(sb->file_bitmap_start + i, 0, generic_io_block, sizeof(generic_io_block));
+    }
+
     /**
      * 分配文件信息块
      */
@@ -218,4 +223,8 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
         }
     }
     sb->file_info_end = sb->file_info_start + file_info_blocks;
+    for (i = 0; i < file_info_blocks; i++) {
+        write_block(sb->file_info_start + i, 0, generic_io_block, sizeof(generic_io_block));
+    }
+
 }
