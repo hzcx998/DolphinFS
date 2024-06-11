@@ -91,6 +91,7 @@ int main(int argc, char *argv[])
     //     num_table[j] = alloc_file_num();
     //     printf("alloc num: %ld\n", num_table[j]);
     // }
+    char buffer[1024];
 #if 1
     fd = open_file("dolphinfs.c", FF_RDWR | FF_CRATE);
     printf("open dolphinfs.c: %d\n", fd);
