@@ -91,7 +91,41 @@ int main(int argc, char *argv[])
     //     num_table[j] = alloc_file_num();
     //     printf("alloc num: %ld\n", num_table[j]);
     // }
-    
+#if 1
+    fd = open_file("dolphinfs.c", FF_RDWR | FF_CRATE);
+    printf("open dolphinfs.c: %d\n", fd);
+
+    /* 打开文件，并将本地文件显示出来 */
+
+    FILE *fp;
+    int num_read;
+
+    fp = fopen("dolphinfs.c", "r+");
+    if (!fp) {
+        printf("disk file 'dolphinfs.c' not found!\n");
+        return -1;
+    }
+    // 读取文件内容到缓冲区，并打印
+    while ((num_read = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+        // 写入文件系统
+        printf("IN %d\n", num_read);
+        write_file(fd, buffer, num_read);
+    }
+
+    // 关闭文件
+    fclose(fp);
+    close_file(fd);
+#endif
+    /* 读取文件 */
+    fd = open_file("dolphinfs.c", FF_RDWR | FF_CRATE);
+    printf("open dolphinfs.c: %d\n", fd);
+
+    memset(buffer, 0, 1024);
+    printf("read: %d\n", read_file(fd, buffer, 1024));
+    printf("file context: %s\n", buffer);
+
+    close_file(fd);
+
     close_blkdev();
 
     return 0;
