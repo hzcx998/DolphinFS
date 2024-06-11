@@ -63,6 +63,12 @@ retry:
 
             // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
             if (data_block_id < sb->block_nr[BLOCK_AREA_DATA]) {
+
+                /* 更新超级块 */
+                memset(allocator_io_block, 0, sizeof(allocator_io_block));
+                memcpy(allocator_io_block, sb, sizeof(*sb));
+                write_block(sb->block_off[BLOCK_AREA_SB], 0, allocator_io_block, sizeof(allocator_io_block));
+
                 return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
             } else {
                 return 0;
