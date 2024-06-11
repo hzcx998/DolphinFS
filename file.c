@@ -236,6 +236,10 @@ static struct file *create_file(char *path, int mode)
         return NULL;
     }
 
+    /* NOTICE: clear data table */
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+
     /* sync file to disk */
     sync_file_info(f, f->num);
 
