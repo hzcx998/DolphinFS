@@ -30,4 +30,8 @@ __IO long read_block(unsigned long blk, unsigned long off, void *buf, long len);
 
 #define SECTOR_SIZE 512
 
+
+int open_blkdev();
+int close_blkdev();
+
 #endif /* _BLKDEV_H */

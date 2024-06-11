@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
     printf("hello, DolphinFS\n");
 
     /* init disk */
-    open_ram();
+    open_blkdev();
 
     /* 创建文件系统 */
     dolphin_mkfs(block_ram);
@@ -91,8 +91,8 @@ int main(int argc, char *argv[])
     //     num_table[j] = alloc_file_num();
     //     printf("alloc num: %ld\n", num_table[j]);
     // }
-
-    close_ram();
+    
+    close_blkdev();
 
     return 0;
 }

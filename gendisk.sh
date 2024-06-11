@@ -1,0 +1,1 @@
+dd if=/dev/zero of=disk.vhd bs=1024 count=16384
