@@ -133,7 +133,7 @@ void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block
     sb->block_size = block_size;
     
     sb->block_nr[BLOCK_AREA_SB] = 1;
-    sb->block_nr[BLOCK_AREA_MAN] = DIV_ROUND_UP(capacity / 8, block_size);
+    sb->block_nr[BLOCK_AREA_MAN] = DIV_ROUND_UP(DIV_ROUND_UP(capacity, 8), block_size);
     sb->block_nr[BLOCK_AREA_DATA] = capacity  - sb->block_nr[BLOCK_AREA_MAN] - sb->block_nr[BLOCK_AREA_SB];
 
     sb->block_off[BLOCK_AREA_SB] = 0;
@@ -188,8 +188,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     /**
      * 计算文件分配位图
      */
-    unsigned long file_bmap_bits = DIV_ROUND_UP(file_info_blocks, 8);
-    unsigned long file_bmap_blocks = DIV_ROUND_UP(file_bmap_bits, BLOCK_SIZE);
+    unsigned long file_bmap_blocks = DIV_ROUND_UP(DIV_ROUND_UP(file_info_blocks, 8), BLOCK_SIZE);
     assert(file_bmap_blocks > 0);
 
     /**
