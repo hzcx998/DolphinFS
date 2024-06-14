@@ -157,6 +157,7 @@ void dump_sb(struct super_block *sb)
     printf("next_free_man_block: %ld\n", sb->next_free_man_block);
     printf("file_bitmap_start: %ld, file_bitmap_end: %ld\n", sb->file_bitmap_start, sb->file_bitmap_end);
     printf("file_info_start: %ld, file_info_end: %ld\n", sb->file_info_start, sb->file_info_end);
+    printf("file_name_start: %ld, file_name_end: %ld\n", sb->file_name_start, sb->file_name_end);
 }
 
 void init_man(struct super_block *sb)
