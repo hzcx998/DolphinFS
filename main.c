@@ -15,11 +15,16 @@ int main(int argc, char *argv[])
     /* init disk */
     open_blkdev();
 
-    /* 创建文件系统 */
-    dolphin_mkfs(block_ram);
-
     /* 挂载文件系统 */
-    dolphin_mount(block_ram, &dolphin_sb);
+    if (dolphin_mount(block_ram, &dolphin_sb)) {
+        /* 创建文件系统 */
+        dolphin_mkfs(block_ram);
+        /* 再次挂载 */
+        if (dolphin_mount(block_ram, &dolphin_sb)) {
+            printf("mount dolphinfs failed!\n");
+            return -1;
+        }
+    }
 
     int fd = open_file("test", FF_RDWR | FF_CRATE);
     printf("open test: %d\n", fd);
@@ -104,17 +109,17 @@ int main(int argc, char *argv[])
     // }
     char buffer[1024];
 #if 1
-    fd = open_file("dolphinfs.c", FF_RDWR | FF_CRATE);
-    printf("open dolphinfs.c: %d\n", fd);
+    fd = open_file("dolphinfs.h", FF_RDWR | FF_CRATE);
+    printf("open dolphinfs.h: %d\n", fd);
 
     /* 打开文件，并将本地文件显示出来 */
 
     FILE *fp;
     int num_read;
 
-    fp = fopen("dolphinfs.c", "r+");
+    fp = fopen("dolphinfs.h", "r+");
     if (!fp) {
-        printf("disk file 'dolphinfs.c' not found!\n");
+        printf("disk file 'dolphinfs.h' not found!\n");
         return -1;
     }
     // 读取文件内容到缓冲区，并打印
@@ -129,12 +134,12 @@ int main(int argc, char *argv[])
     close_file(fd);
 #endif
     /* 读取文件 */
-    fd = open_file("dolphinfs.c", FF_RDWR | FF_CRATE);
-    printf("open dolphinfs.c: %d\n", fd);
+    fd = open_file("dolphinfs.h", FF_RDWR | FF_CRATE);
+    printf("open dolphinfs.h: %d\n", fd);
 
     memset(buffer, 0, 1024);
     printf("read: %d\n", read_file(fd, buffer, 1024));
-    printf("file context: %s\n", buffer);
+    printf("file context:\n%s\n", buffer);
 
     close_file(fd);
 
