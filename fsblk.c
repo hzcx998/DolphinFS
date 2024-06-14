@@ -176,7 +176,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     也就是需要要创建2组内容，一组是管理文件分配的位图块。一组是管理文件内容的数据块。
      */
 
-    /**00
+    /**
      * 计算文件信息占用的空间
      */
     unsigned long file_info_blocks = DIV_ROUND_UP(file_count * sizeof(struct file), BLOCK_SIZE);
@@ -188,6 +188,12 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     unsigned long file_bmap_bits = DIV_ROUND_UP(file_info_blocks, 8);
     unsigned long file_bmap_blocks = DIV_ROUND_UP(file_bmap_bits, BLOCK_SIZE);
     assert(file_bmap_blocks > 0);
+
+    /**
+     * 计算文件名块数量
+     */
+    unsigned long file_name_blocks = DIV_ROUND_UP(file_count * sizeof(struct file_name), BLOCK_SIZE);
+    assert(file_name_blocks > 0);
 
     sb->file_count = file_count;
     /**
@@ -227,4 +233,19 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
         write_block(sb->file_info_start + i, 0, generic_io_block, sizeof(generic_io_block));
     }
 
+    /**
+     * 分配文件名字块
+     */
+    sb->file_name_start = 0;
+    for (i = 0; i < file_name_blocks; i++) {
+        block = alloc_data_block();
+        assert(block > 0);
+        if (!sb->file_name_start) {
+            sb->file_name_start = block;
+        }
+    }
+    sb->file_name_end = sb->file_name_start + file_name_blocks;
+    for (i = 0; i < file_name_blocks; i++) {
+        write_block(sb->file_name_start + i, 0, generic_io_block, sizeof(generic_io_block));
+    }
 }

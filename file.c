@@ -113,6 +113,69 @@ int load_file_info(struct file *file, long num)
     return 0;
 }
 
+static int sync_file_name(unsigned long num, char *name)
+{
+    struct file_name *file_name;
+    struct super_block *sb = &dolphin_sb;
+    unsigned long file_name_block, block_off;
+    unsigned long file_count_in_block;
+
+    file_count_in_block = sb->block_size / sizeof(struct file_name);
+
+    block_off = num % file_count_in_block;
+    file_name_block = num / file_count_in_block;
+    file_name_block += sb->file_name_start;
+
+    /* 通过file_info_block读取文件所在的块 */
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    /* 通过block_off定位某个文件 */
+    file_name = (struct file_name *)generic_io_block;
+    strncpy(file_name[block_off].buf, name, FILE_NAME_LEN);
+
+    write_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+}
+
+static int load_file_name(unsigned long num, char *name, int len)
+{
+    struct file_name *file_name;
+    struct super_block *sb = &dolphin_sb;
+    unsigned long file_name_block, block_off;
+    unsigned long file_count_in_block;
+
+    file_count_in_block = sb->block_size / sizeof(struct file_name);
+
+    block_off = num % file_count_in_block;
+    file_name_block = num / file_count_in_block;
+    file_name_block += sb->file_name_start;
+
+    /* 通过file_info_block读取文件所在的块 */
+    memset(generic_io_block, 0, sizeof(generic_io_block));
+    read_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+
+    /* 通过block_off定位某个文件 */
+    file_name = (struct file_name *)generic_io_block;
+    strncpy(name, file_name[block_off].buf, min(len, FILE_NAME_LEN));
+
+    write_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+    return 0;
+}
+
+long walk_file_name(long file_num, void *buf, long len)
+{
+    /* 遍历到最大值或者最小值则返回-1，表示遍历完成 */
+    if (file_num < 0 || file_num >= MAX_FILES)
+        return -1;
+    
+    /* 检查file_num是否已经被分配 */
+
+    load_file_name(file_num, buf, len);
+
+    /* 返回下一个可以检查的文件号 */
+    return file_num + 1;
+}
+
 int sync_file_info(struct file *file, long num)
 {
     struct file *file_table;
@@ -163,6 +226,10 @@ void free_file(struct file *file, int sync)
         struct file empty_file;
         memset(&empty_file, 0, sizeof(struct file));
         sync_file_info(&empty_file, file->num);
+        
+        /* clear name */
+        struct file_name file_name = {0};
+        sync_file_name(file->num, file_name.buf);
     }
     free_file_num(file->num);
 
@@ -242,6 +309,9 @@ static struct file *create_file(char *path, int mode)
 
     /* sync file to disk */
     sync_file_info(f, f->num);
+
+    /* sync file name to disk */
+    sync_file_name(f->num, path);
 
     return f;
 }
@@ -688,4 +758,64 @@ int seek_file(int file, int off, int pos)
         break;
     }
     return of->off;
+}
+
+void list_files(void)
+{
+    long idx, next;
+    char name[FILE_NAME_LEN];
+
+    idx = 0;
+
+    while (idx >= 0) {
+        memset(name, 0, sizeof(name));
+        next = walk_file_name(idx, name, FILE_NAME_LEN);
+        if (name[0] != 0) {
+            struct file_stat stat;
+            stat_file(name, &stat);
+            printf("[%d] name:%s num: %d size: %d mode:%x\n", idx, name, stat.num, stat.file_size, stat.mode);
+        }
+        idx = next;
+    }
+}
+
+int rename_file(char *src_name, char *dest_name)
+{
+    struct file *f;
+    
+    if (!src_name || !dest_name) {
+        return -1;
+    }
+    f = search_file(src_name);
+    if (!f) {
+        return -1;
+    }
+
+    /* 修改名字 */
+    sync_file_name(f->num, dest_name);
+
+    /* 修改名字hash */
+    f->hash = str2hash(dest_name);
+    sync_file_info(f, f->num);
+
+    return 0;
+}
+
+int stat_file(char *path, struct file_stat *stat)
+{
+    struct file *f;
+    
+    if (!path) {
+        return -1;
+    }
+    f = search_file(path);
+    if (!f) {
+        return -1;
+    }
+
+    stat->file_size = f->file_size;
+    stat->num = f->num;
+    stat->mode = f->mode;
+    
+    return 0;
 }

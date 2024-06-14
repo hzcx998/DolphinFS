@@ -37,6 +37,9 @@ struct super_block
 
     unsigned long file_info_start;
     unsigned long file_info_end;
+
+    unsigned long file_name_start;
+    unsigned long file_name_end;
 };
 
 long alloc_block(void);

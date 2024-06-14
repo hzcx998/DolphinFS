@@ -66,6 +66,17 @@ int main(int argc, char *argv[])
     printf("seek: %d\n", seek_file(fd, 0, FP_END));
     printf("close f: %d\n", close_file(fd));
 
+    /* list files */
+    list_files();
+
+    rename_file("test_dir/a", "test_dir/abc");
+
+    list_files();
+
+    rename_file("test_dir/abc", "test_dir/a");
+
+    list_files();
+
     dump_all_file();
     delete_file("test_dir/a");
     dump_all_file();
