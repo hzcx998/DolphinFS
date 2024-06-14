@@ -128,6 +128,7 @@ int free_block(long blk)
 
 void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block_size)
 {
+    sb->magic = SUPER_BLOCK_MAGIC;
     sb->capacity = capacity;
     sb->block_size = block_size;
     
@@ -145,6 +146,7 @@ void init_sb(struct super_block *sb, unsigned long capacity, unsigned long block
 void dump_sb(struct super_block *sb)
 {
     printf("==== sb info ====\n");
+    printf("magic: %x\n", sb->magic);
     printf("capacity: %ld\n", sb->capacity);
     printf("block_size: %ld\n", sb->block_size);
     printf("block_nr: SB %ld, MAN %ld, DATA %ld\n", 

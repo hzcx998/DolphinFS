@@ -6,6 +6,8 @@
 #define BLOCK_AREA_DATA 2
 #define BLOCK_AREA_MAX (BLOCK_AREA_DATA + 1)
 
+#define SUPER_BLOCK_MAGIC 0x1a5b7c9d
+
 /**
  * 块分区：
  * 总块：G
@@ -15,6 +17,7 @@
  */
 struct super_block
 {
+    unsigned int magic;
     unsigned long capacity;
     unsigned long block_size;
 

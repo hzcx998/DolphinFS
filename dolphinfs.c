@@ -40,5 +40,9 @@ int dolphin_mount(char *disk, struct super_block *sb)
 
     dump_sb(sb);
 
+    if (sb->magic != SUPER_BLOCK_MAGIC) {
+        return -1;
+    }
+
     return 0;
 }
