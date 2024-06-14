@@ -1,0 +1,1 @@
+xmake && ./build/linux/x86_64/release/dolfs
