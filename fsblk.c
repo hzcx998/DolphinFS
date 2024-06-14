@@ -10,20 +10,20 @@ struct super_block dolphin_sb;
 char generic_io_block[BLOCK_SIZE];
 char allocator_io_block[BLOCK_SIZE];
 
-unsigned long scan_free_bits(unsigned long *buf, unsigned long size)
+unsigned long scan_free_bits(unsigned char *buf, unsigned long size)
 {
     int i, j;
-    for (i = 0; i < size / sizeof(unsigned long); i++) {
-        if (buf[i] != 0xffffffffffffffff) {
-            for (j = 0; j < sizeof(unsigned long); j++) {
+    for (i = 0; i < size; i++) {
+        if (buf[i] != 0xff) {
+            for (j = 0; j < 8; j++) {
                 if (!(buf[i] & (1 << j))) {
                     buf[i] |= (1 << j);
-                    return i * sizeof(unsigned long) + j;
+                    return i * 8 + j;
                 }
             }
         }
     }
-    return size;
+    return size * 8;
 }
 
 long alloc_block(void)
@@ -51,11 +51,11 @@ retry:
         
         data_block_id = scan_free_bits(allocator_io_block, sb->block_size);
         /* 扫描成功 */
-        if (sb->block_size != data_block_id) {
+        if (sb->block_size * 8 != data_block_id) {
             // printf("---> get block id:%ld\n", data_block_id);
             /* 如果不是第一个块，就乘以块偏移 */
             if ((next - start) != 0) 
-                data_block_id += (next - start) * sb->block_size;
+                data_block_id += (next - start) * sb->block_size * 8;  /* 一个块标记4096*8个位 */
             /* 标记下一个空闲块 */
             sb->next_free_man_block = next;
             

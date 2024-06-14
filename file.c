@@ -35,11 +35,11 @@ long alloc_file_num(void)
         
         file_num = scan_free_bits(allocator_io_block, sb->block_size);
         /* 扫描成功 */
-        if (sb->block_size != file_num) {
+        if (sb->block_size * 8 != file_num) {
             // printf("---> get block id:%ld\n", data_block_id);
             /* 如果不是第一个块，就乘以块偏移 */
             if ((next - start) != 0) 
-                file_num += (next - start) * sb->block_size;
+                file_num += (next - start) * (sb->block_size * 8); /* 一个块标记4096*8个位 */
 
             write_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
 
@@ -158,7 +158,6 @@ static int load_file_name(unsigned long num, char *name, int len)
     file_name = (struct file_name *)generic_io_block;
     strncpy(name, file_name[block_off].buf, min(len, FILE_NAME_LEN));
 
-    write_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
     return 0;
 }
 
