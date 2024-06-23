@@ -5,22 +5,24 @@
 #include <string.h>
 #include <assert.h>
 
-extern unsigned char *block_ram;
 extern struct super_block dolphin_sb;
+
+#define TEST_DEV_NAME "disk"
 
 int main(int argc, char *argv[])
 {
     printf("hello, DolphinFS\n");
 
     /* init disk */
-    open_blkdev();
+    init_blkdev();
+    list_blkdev();
 
     /* 挂载文件系统 */
-    if (dolphin_mount(block_ram, &dolphin_sb)) {
+    if (dolphin_mount(TEST_DEV_NAME, &dolphin_sb)) {
         /* 创建文件系统 */
-        dolphin_mkfs(block_ram);
+        dolphin_mkfs(TEST_DEV_NAME);
         /* 再次挂载 */
-        if (dolphin_mount(block_ram, &dolphin_sb)) {
+        if (dolphin_mount(TEST_DEV_NAME, &dolphin_sb)) {
             printf("mount dolphinfs failed!\n");
             return -1;
         }
@@ -143,7 +145,9 @@ int main(int argc, char *argv[])
 
     close_file(fd);
 
-    close_blkdev();
+    /* umount fs */
+
+    exit_blkdev();
 
     return 0;
 }

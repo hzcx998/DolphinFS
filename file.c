@@ -31,7 +31,7 @@ long alloc_file_num(void)
 
     for (; next < end; next++) {
         memset(allocator_io_block, 0, sizeof(allocator_io_block));
-        read_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
+        read_block(sb->blkdev, next, 0, allocator_io_block, sizeof(allocator_io_block));
         
         file_num = scan_free_bits(allocator_io_block, sb->block_size);
         /* 扫描成功 */
@@ -41,7 +41,7 @@ long alloc_file_num(void)
             if ((next - start) != 0) 
                 file_num += (next - start) * (sb->block_size * 8); /* 一个块标记4096*8个位 */
 
-            write_block(next, 0, allocator_io_block, sizeof(allocator_io_block));
+            write_block(sb->blkdev, next, 0, allocator_io_block, sizeof(allocator_io_block));
 
             // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
             if (file_num < sb->file_count) {
@@ -81,11 +81,11 @@ int free_file_num(long file_num)
     bmap_block += sb->file_bitmap_start;
 
     memset(allocator_io_block, 0, sizeof(allocator_io_block));
-    read_block(bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
+    read_block(sb->blkdev, bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
 
     allocator_io_block[byte_off] &= ~(1 << bits_off);
     /* 修改块 */
-    write_block(bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
+    write_block(sb->blkdev, bmap_block, 0, allocator_io_block, sizeof(allocator_io_block));
 
     return 0;
 }
@@ -105,7 +105,7 @@ int load_file_info(struct file *file, long num)
 
     /* 通过file_info_block读取文件所在的块 */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, file_info_block, 0, generic_io_block, sizeof(generic_io_block));
 
     /* 通过block_off定位某个文件 */
     file_table = (struct file *)generic_io_block;
@@ -128,13 +128,13 @@ static int sync_file_name(unsigned long num, char *name)
 
     /* 通过file_info_block读取文件所在的块 */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, file_name_block, 0, generic_io_block, sizeof(generic_io_block));
 
     /* 通过block_off定位某个文件 */
     file_name = (struct file_name *)generic_io_block;
     strncpy(file_name[block_off].buf, name, FILE_NAME_LEN);
 
-    write_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(sb->blkdev, file_name_block, 0, generic_io_block, sizeof(generic_io_block));
 }
 
 static int load_file_name(unsigned long num, char *name, int len)
@@ -152,7 +152,7 @@ static int load_file_name(unsigned long num, char *name, int len)
 
     /* 通过file_info_block读取文件所在的块 */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(file_name_block, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, file_name_block, 0, generic_io_block, sizeof(generic_io_block));
 
     /* 通过block_off定位某个文件 */
     file_name = (struct file_name *)generic_io_block;
@@ -190,13 +190,13 @@ int sync_file_info(struct file *file, long num)
 
     /* 通过file_info_block读取文件所在的块 */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, file_info_block, 0, generic_io_block, sizeof(generic_io_block));
 
     /* 通过block_off定位某个文件 */
     file_table = (struct file *)generic_io_block;
     file_table[block_off] = *file;
 
-    write_block(file_info_block, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(sb->blkdev, file_info_block, 0, generic_io_block, sizeof(generic_io_block));
 
     return 0;
 }
@@ -302,9 +302,11 @@ static struct file *create_file(char *path, int mode)
         return NULL;
     }
 
+    struct super_block *sb = &dolphin_sb;
+
     /* NOTICE: clear data table */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     /* sync file to disk */
     sync_file_info(f, f->num);
@@ -379,8 +381,10 @@ int delete_file(char *path)
     
     assert(f->data_table > 0);
 
+    struct super_block *sb = &dolphin_sb;
+
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     assert(check_empty_u32(generic_io_block, sizeof(generic_io_block) / sizeof(unsigned int)));
 
@@ -448,9 +452,10 @@ long get_file_block(struct file *f, unsigned long off)
 {
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
+    struct super_block *sb = &dolphin_sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     l1 = (unsigned int *)generic_io_block;
     assert(l1 != NULL);
@@ -460,15 +465,15 @@ long get_file_block(struct file *f, unsigned long off)
         l1_val = alloc_data_block();
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
-        write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+        write_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
         // clear new block   
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+        write_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
     }
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
 
     l2 = (unsigned int *)generic_io_block;
     
@@ -477,11 +482,11 @@ long get_file_block(struct file *f, unsigned long off)
         l2_val = alloc_data_block();
         l2[GET_BMD_OFF(off)] = l2_val;
         // sync block
-        write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+        write_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
 
         // clear new block   
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        write_block(l2_val, 0, generic_io_block, sizeof(generic_io_block));
+        write_block(sb->blkdev, l2_val, 0, generic_io_block, sizeof(generic_io_block));
     }
 
     return l2_val;
@@ -491,9 +496,10 @@ long walk_file_block(struct file *f, unsigned long off)
 {
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
+    struct super_block *sb = &dolphin_sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     l1 = (unsigned int *)generic_io_block;
     assert(l1 != NULL);
@@ -505,7 +511,7 @@ long walk_file_block(struct file *f, unsigned long off)
     }
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
 
     l2 = (unsigned int *)generic_io_block;
 
@@ -523,9 +529,10 @@ long free_file_block(struct file *f, unsigned long off)
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
     int i;
+    struct super_block *sb = &dolphin_sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     l1 = (unsigned int *)generic_io_block;
     if (l1 == NULL) {
@@ -538,7 +545,7 @@ long free_file_block(struct file *f, unsigned long off)
     }
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
 
     l2 = (unsigned int *)generic_io_block;
     
@@ -553,7 +560,7 @@ long free_file_block(struct file *f, unsigned long off)
     l2[GET_BMD_OFF(off)] = 0; /* clear data block in l2 */
 
     // sync block
-    write_block(l1_val, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
 
     /* check l2 empty? */
     if (!check_empty_u32(generic_io_block, sizeof(generic_io_block) / sizeof(unsigned int))) {
@@ -563,7 +570,7 @@ long free_file_block(struct file *f, unsigned long off)
     /* l2 empty !*/
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     l1 = (unsigned int *)generic_io_block;
 
@@ -575,7 +582,7 @@ long free_file_block(struct file *f, unsigned long off)
     l1[GET_BGD_OFF(off)] = 0; /* clear l2 block in l1 */
 
     // sync block
-    write_block(f->data_table, 0, generic_io_block, sizeof(generic_io_block));
+    write_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     return 0;
 }
@@ -591,6 +598,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
     long write_len;
     char *pbuf;
     long ret;
+    struct super_block *sb = &dolphin_sb;
 
     next_off = off;
     left_len = len;
@@ -612,7 +620,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
 
         /* 将数据读取块 */
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        ret = read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        ret = read_block(sb->blkdev, phy_blk, 0, generic_io_block, sizeof(generic_io_block));
         if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
@@ -621,7 +629,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
         memcpy(generic_io_block + blk_off, pbuf, chunk);
 
         /* 将数据写入块 */
-        ret = write_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        ret = write_block(sb->blkdev, phy_blk, 0, generic_io_block, sizeof(generic_io_block));
         if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }
@@ -666,7 +674,8 @@ long do_read_file(struct file *f, long off, void *buf, long len)
     char *pbuf;
     long ret;
     long file_size;
-    
+    struct super_block *sb = &dolphin_sb;
+
     file_size = f->file_size;
     next_off = off;
     left_len = len;
@@ -693,7 +702,7 @@ long do_read_file(struct file *f, long off, void *buf, long len)
 
         /* 将数据读取块 */
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        ret = read_block(phy_blk, 0, generic_io_block, sizeof(generic_io_block));
+        ret = read_block(sb->blkdev, phy_blk, 0, generic_io_block, sizeof(generic_io_block));
         if (ret != sizeof(generic_io_block)) { // 写IO失败
             return -1;
         }

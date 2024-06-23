@@ -8,6 +8,8 @@
 
 #define SUPER_BLOCK_MAGIC 0x1a5b7c9d
 
+struct blkdev;
+
 /**
  * 块分区：
  * 总块：G
@@ -43,6 +45,9 @@ struct super_block
 
     unsigned long file_name_start;
     unsigned long file_name_end;
+
+    /* 以下是内存中的数据，在磁盘上无意义 */
+    struct blkdev *blkdev;
 };
 
 long alloc_block(void);

@@ -1,6 +1,11 @@
 #ifndef _BLKDEV_H
 #define _BLKDEV_H
 
+/**
+ * 最大支持的块设备数量
+ */
+#define MAX_BLOCK_DEV_NR 2
+
 /*
 数据页表格式：
 32位格式：10，10，12
@@ -25,13 +30,32 @@
 #define BLOCK_DATA_SIZE (16 * 1024 * 1024) // 16 MB
 #define MAX_BLOCK_NR (BLOCK_DATA_SIZE / BLOCK_SIZE)
 
-__IO long write_block(unsigned long blk, unsigned long off, void *buf, long len);
-__IO long read_block(unsigned long blk, unsigned long off, void *buf, long len);
-
 #define SECTOR_SIZE 512
 
+struct blkdev {
+    char *name;
+    unsigned long blksz;
+    unsigned long blkcnt;
+    int (*open)(struct blkdev *bdev, int flags);
+    int (*close)(struct blkdev *bdev);
+    int (*read)(struct blkdev *bdev, unsigned long lba, void *buf, unsigned long sectors);
+    int (*write)(struct blkdev *bdev, unsigned long lba, void *buf, unsigned long sectors);
+    void *data;
+    int ref;
+};
 
-int open_blkdev();
-int close_blkdev();
+extern int add_blkdev(struct blkdev *bdev);
+extern int del_blkdev(struct blkdev *bdev);
+
+extern int open_blkdev(struct blkdev *bdev, int flags);
+extern int close_blkdev(struct blkdev *bdev);
+extern __IO long write_block(struct blkdev *bdev, unsigned long blk, unsigned long off, void *buf, long len);
+extern __IO long read_block(struct blkdev *bdev, unsigned long blk, unsigned long off, void *buf, long len);
+extern long get_capacity(struct blkdev *bdev);
+extern struct blkdev *search_blkdev(char *name);
+
+void init_blkdev(void);
+void exit_blkdev(void);
+void list_blkdev(void);
 
 #endif /* _BLKDEV_H */

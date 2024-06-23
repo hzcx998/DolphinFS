@@ -1,1 +1,1 @@
-xmake && ./build/linux/x86_64/release/dolfs
+xmake clean && xmake && ./build/linux/x86_64/release/dolfs
