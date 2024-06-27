@@ -7,9 +7,7 @@
 
 extern char generic_io_block[BLOCK_SIZE];
 
-extern struct super_block dolphin_sb;
-
-int dolphin_mkfs(char *disk)
+int dolphin_mkfs(char *disk, struct super_block *sb)
 {
     struct blkdev *bdev = search_blkdev(disk);
     if (!bdev) {
@@ -23,23 +21,23 @@ int dolphin_mkfs(char *disk)
     printf("mkfs on blkdev %s\n", bdev->name);
 
     /* init sb info */
-    init_sb(&dolphin_sb, get_capacity(bdev), BLOCK_SIZE);
-    dolphin_sb.blkdev = bdev;
+    init_sb(sb, get_capacity(bdev), BLOCK_SIZE);
+    sb->blkdev = bdev;
 
-    dump_sb(&dolphin_sb);
+    dump_sb(sb);
 
     /* init man info */
-    init_man(&dolphin_sb);
+    init_man(sb);
 
     /* init file info */
-    init_file_info(&dolphin_sb, MAX_FILES);
+    init_file_info(sb, MAX_FILES);
 
     /* write sb info to disk */
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    memcpy(generic_io_block, &dolphin_sb, sizeof(dolphin_sb));
-    write_block(bdev, dolphin_sb.block_off[BLOCK_AREA_SB], 0, generic_io_block, sizeof(generic_io_block));
+    memcpy(generic_io_block, sb, sizeof(*sb));
+    write_block(bdev, sb->block_off[BLOCK_AREA_SB], 0, generic_io_block, sizeof(generic_io_block));
 
-    dump_sb(&dolphin_sb);
+    dump_sb(sb);
 
     close_blkdev(bdev);
 

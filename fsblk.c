@@ -5,8 +5,6 @@
 #include <string.h>
 #include <assert.h>
 
-struct super_block dolphin_sb;
-
 char generic_io_block[BLOCK_SIZE];
 char allocator_io_block[BLOCK_SIZE];
 
@@ -26,7 +24,7 @@ unsigned long scan_free_bits(unsigned char *buf, unsigned long size)
     return size * 8;
 }
 
-long alloc_block(void)
+long alloc_block(struct super_block *sb)
 {
     /* walk all man block */
 
@@ -34,8 +32,6 @@ long alloc_block(void)
     unsigned long data_block_id;
     int scaned = 0;
 
-    struct super_block *sb = &dolphin_sb;
-    
     start = sb->block_off[BLOCK_AREA_MAN];
     end = start + sb->block_nr[BLOCK_AREA_MAN];
     
@@ -89,12 +85,11 @@ retry:
     return 0;
 }
 
-int free_block(long blk)
+int free_block(struct super_block *sb, long blk)
 {
     unsigned long man_block, byte_off, bits_off;;
     unsigned long data_block_id, data_block_byte;
-    struct super_block *sb = &dolphin_sb;
-    
+
     // printf("---> free block:%ld\n", blk);
 
     if (blk < sb->block_off[BLOCK_AREA_DATA] || blk >= sb->block_off[BLOCK_AREA_DATA] + sb->block_nr[BLOCK_AREA_DATA])
@@ -206,7 +201,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
 
     sb->file_bitmap_start = 0;
     for (i = 0; i < file_bmap_blocks; i++) {
-        block = alloc_data_block();
+        block = alloc_data_block(sb);
         assert(block > 0);
         if (!sb->file_bitmap_start) {
             sb->file_bitmap_start = block;
@@ -224,7 +219,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
      */
     sb->file_info_start = 0;
     for (i = 0; i < file_info_blocks; i++) {
-        block = alloc_data_block();
+        block = alloc_data_block(sb);
         assert(block > 0);
         if (!sb->file_info_start) {
             sb->file_info_start = block;
@@ -240,7 +235,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
      */
     sb->file_name_start = 0;
     for (i = 0; i < file_name_blocks; i++) {
-        block = alloc_data_block();
+        block = alloc_data_block(sb);
         assert(block > 0);
         if (!sb->file_name_start) {
             sb->file_name_start = block;

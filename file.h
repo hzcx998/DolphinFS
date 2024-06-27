@@ -31,6 +31,7 @@ struct file {
     int ref;
     int mode; /* r,w,rw */
     int num; /* 文件编号 */
+    struct super_block *sb;
 };
 
 struct file_name {
@@ -46,25 +47,26 @@ struct file_stat {
 /* open file */
 struct ofile {
     struct file *f;
+    struct super_block *sb;
     int oflags; /* open flags */
     long off;
 };
 
-void dump_all_file(void);
-int delete_file(char *path);
-int open_file(char *path, int flags);
+void dump_all_file(struct super_block *sb);
+int delete_file(struct super_block *sb, char *path);
+int open_file(struct super_block *sb, char *path, int flags);
 int close_file(int file);
 long write_file(int file, void *buf, long len);
 long read_file(int file, void *buf, long len);
 int seek_file(int file, int off, int pos);
 
-long walk_file_name(long file_num, void *buf, long len);
-void list_files(void);
+long walk_file_name(struct super_block *sb, long file_num, void *buf, long len);
+void list_files(struct super_block *sb);
 
-int rename_file(char *src_name, char *dest_name);
-int stat_file(char *path, struct file_stat *stat);
+int rename_file(struct super_block *sb, char *src_name, char *dest_name);
+int stat_file(struct super_block *sb, char *path, struct file_stat *stat);
 
-long alloc_file_num(void);
-int free_file_num(long file_num);
+long alloc_file_num(struct super_block *sb);
+int free_file_num(struct super_block *sb, long file_num);
 
 #endif

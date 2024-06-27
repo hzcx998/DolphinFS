@@ -16,7 +16,7 @@
 
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
-int dolphin_mkfs(char *disk);
+int dolphin_mkfs(char *disk, struct super_block *sb);
 int dolphin_mount(char *disk, struct super_block *sb);
 int dolphin_unmount(struct super_block *sb);
 

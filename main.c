@@ -5,43 +5,36 @@
 #include <string.h>
 #include <assert.h>
 
-extern struct super_block dolphin_sb;
-
-#define TEST_DEV_NAME "disk"
-
-int main(int argc, char *argv[])
+void test_fs(char *device)
 {
-    printf("hello, DolphinFS\n");
-
-    /* init disk */
-    init_blkdev();
-    list_blkdev();
+    printf("\n############ test fs on device: %s\n", device);
+    struct super_block dolphin_sb;
 
     /* 挂载文件系统 */
-    if (dolphin_mount(TEST_DEV_NAME, &dolphin_sb)) {
+    if (dolphin_mount(device, &dolphin_sb)) {
         /* 创建文件系统 */
-        dolphin_mkfs(TEST_DEV_NAME);
+        dolphin_mkfs(device, &dolphin_sb);
         /* 再次挂载 */
-        if (dolphin_mount(TEST_DEV_NAME, &dolphin_sb)) {
+        if (dolphin_mount(device, &dolphin_sb)) {
             printf("mount dolphinfs failed!\n");
             return -1;
         }
     }
 
-    int fd = open_file("test", FF_RDWR | FF_CRATE);
+    int fd = open_file(&dolphin_sb, "test", FF_RDWR | FF_CRATE);
     printf("open test: %d\n", fd);
     
     printf("close f: %d\n", close_file(fd));
 
-    fd = open_file("test_dir", FF_RDWR);
+    fd = open_file(&dolphin_sb, "test_dir", FF_RDWR);
     printf("open test_dir: %d\n", fd);
     printf("close f: %d\n", close_file(fd));
     
-    fd = open_file("test_dir/", FF_RDWR | FF_CRATE);
+    fd = open_file(&dolphin_sb, "test_dir/", FF_RDWR | FF_CRATE);
     printf("open test_dir/: %d\n", fd);
     printf("close f: %d\n", close_file(fd));
 
-    fd = open_file("test_dir/a", FF_RDWR | FF_CRATE);
+    fd = open_file(&dolphin_sb, "test_dir/a", FF_RDWR | FF_CRATE);
     printf("open test_dir/a: %d\n", fd);
 
     printf("write: %d\n", write_file(fd, "hello", 5));
@@ -61,7 +54,7 @@ int main(int argc, char *argv[])
 
     printf("close f: %d\n", close_file(fd));
     
-    fd = open_file("test_dir/", FF_RDWR);
+    fd = open_file(&dolphin_sb, "test_dir/", FF_RDWR);
     printf("open test_dir/: %d\n", fd);
     
     printf("seek: %d\n", seek_file(fd, 1, FP_SET));
@@ -74,23 +67,23 @@ int main(int argc, char *argv[])
     printf("close f: %d\n", close_file(fd));
 
     /* list files */
-    list_files();
+    list_files(&dolphin_sb);
 
-    rename_file("test_dir/a", "test_dir/abc");
+    rename_file(&dolphin_sb, "test_dir/a", "test_dir/abc");
 
-    list_files();
+    list_files(&dolphin_sb);
 
-    rename_file("test_dir/abc", "test_dir/a");
+    rename_file(&dolphin_sb, "test_dir/abc", "test_dir/a");
 
-    list_files();
+    list_files(&dolphin_sb);
 
-    dump_all_file();
-    delete_file("test_dir/a");
-    dump_all_file();
-    delete_file("test_dir/");
-    dump_all_file();
-    delete_file("test");
-    dump_all_file();
+    dump_all_file(&dolphin_sb);
+    delete_file(&dolphin_sb, "test_dir/a");
+    dump_all_file(&dolphin_sb);
+    delete_file(&dolphin_sb, "test_dir/");
+    dump_all_file(&dolphin_sb);
+    delete_file(&dolphin_sb, "test");
+    dump_all_file(&dolphin_sb);
 
     dump_sb(&dolphin_sb);
 
@@ -111,7 +104,7 @@ int main(int argc, char *argv[])
     // }
     char buffer[1024];
 #if 1
-    fd = open_file("dolphinfs.h", FF_RDWR | FF_CRATE);
+    fd = open_file(&dolphin_sb, "dolphinfs.h", FF_RDWR | FF_CRATE);
     printf("open dolphinfs.h: %d\n", fd);
 
     /* 打开文件，并将本地文件显示出来 */
@@ -136,7 +129,7 @@ int main(int argc, char *argv[])
     close_file(fd);
 #endif
     /* 读取文件 */
-    fd = open_file("dolphinfs.h", FF_RDWR | FF_CRATE);
+    fd = open_file(&dolphin_sb, "dolphinfs.h", FF_RDWR | FF_CRATE);
     printf("open dolphinfs.h: %d\n", fd);
 
     memset(buffer, 0, 1024);
@@ -146,6 +139,23 @@ int main(int argc, char *argv[])
     close_file(fd);
 
     /* umount fs */
+    dolphin_unmount(&dolphin_sb);
+
+}
+
+#define TEST_RAM_DEV "ram"
+#define TEST_DISK_DEV "disk"
+
+int main(int argc, char *argv[])
+{
+    printf("hello, DolphinFS\n");
+
+    /* init disk */
+    init_blkdev();
+    list_blkdev();
+
+    test_fs(TEST_RAM_DEV);
+    test_fs(TEST_DISK_DEV);
 
     exit_blkdev();
 

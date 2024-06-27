@@ -5,8 +5,6 @@
 #include <string.h>
 #include <assert.h>
 
-extern struct super_block dolphin_sb;
-
 extern char generic_io_block[BLOCK_SIZE];
 extern char allocator_io_block[BLOCK_SIZE];
 
@@ -15,15 +13,13 @@ struct ofile open_files[MAX_OPEN_FILE];
 long free_file_block(struct file *f, unsigned long off);
 long walk_file_block(struct file *f, unsigned long off);
 
-long alloc_file_num(void)
+long alloc_file_num(struct super_block *sb)
 {
     /* walk all man block */
 
     unsigned long start, end, next;
     unsigned long file_num;
 
-    struct super_block *sb = &dolphin_sb;
-    
     start = sb->file_bitmap_start;
     end = sb->file_bitmap_end;
     
@@ -56,12 +52,11 @@ long alloc_file_num(void)
     return -1;
 }
 
-int free_file_num(long file_num)
+int free_file_num(struct super_block *sb, long file_num)
 {
     unsigned long bmap_block, byte_off, bits_off;;
     unsigned long data_block_id, data_block_byte;
-    struct super_block *sb = &dolphin_sb;
-    
+
     // printf("---> free block:%ld\n", blk);
 
     if (file_num < 0 || file_num >= sb->file_count)
@@ -90,10 +85,9 @@ int free_file_num(long file_num)
     return 0;
 }
 
-int load_file_info(struct file *file, long num)
+int load_file_info(struct super_block *sb, struct file *file, long num)
 {
     struct file *file_table;
-    struct super_block *sb = &dolphin_sb;
     unsigned long file_info_block, block_off;
     unsigned long file_count_in_block;
 
@@ -113,10 +107,9 @@ int load_file_info(struct file *file, long num)
     return 0;
 }
 
-static int sync_file_name(unsigned long num, char *name)
+static int sync_file_name(struct super_block *sb, unsigned long num, char *name)
 {
     struct file_name *file_name;
-    struct super_block *sb = &dolphin_sb;
     unsigned long file_name_block, block_off;
     unsigned long file_count_in_block;
 
@@ -137,10 +130,9 @@ static int sync_file_name(unsigned long num, char *name)
     write_block(sb->blkdev, file_name_block, 0, generic_io_block, sizeof(generic_io_block));
 }
 
-static int load_file_name(unsigned long num, char *name, int len)
+static int load_file_name(struct super_block *sb, unsigned long num, char *name, int len)
 {
     struct file_name *file_name;
-    struct super_block *sb = &dolphin_sb;
     unsigned long file_name_block, block_off;
     unsigned long file_count_in_block;
 
@@ -161,7 +153,7 @@ static int load_file_name(unsigned long num, char *name, int len)
     return 0;
 }
 
-long walk_file_name(long file_num, void *buf, long len)
+long walk_file_name(struct super_block *sb, long file_num, void *buf, long len)
 {
     /* 遍历到最大值或者最小值则返回-1，表示遍历完成 */
     if (file_num < 0 || file_num >= MAX_FILES)
@@ -169,16 +161,15 @@ long walk_file_name(long file_num, void *buf, long len)
     
     /* 检查file_num是否已经被分配 */
 
-    load_file_name(file_num, buf, len);
+    load_file_name(sb, file_num, buf, len);
 
     /* 返回下一个可以检查的文件号 */
     return file_num + 1;
 }
 
-int sync_file_info(struct file *file, long num)
+int sync_file_info(struct super_block *sb, struct file *file, long num)
 {
     struct file *file_table;
-    struct super_block *sb = &dolphin_sb;
     unsigned long file_info_block, block_off;
     unsigned long file_count_in_block;
 
@@ -204,15 +195,16 @@ int sync_file_info(struct file *file, long num)
 /**
  * 分配一个文件号，并分配内存保存数据
  */
-struct file *alloc_file(void)
+struct file *alloc_file(struct super_block *sb)
 {
-    long num = alloc_file_num();
+    long num = alloc_file_num(sb);
     if (num < 0) {
         return NULL;
     }
     /* load file num from disk */
     struct file *f = malloc(sizeof(struct file));
     f->num = num;
+    f->sb = sb;
     return f;
 }
 
@@ -224,27 +216,26 @@ void free_file(struct file *file, int sync)
     if (sync) {
         struct file empty_file;
         memset(&empty_file, 0, sizeof(struct file));
-        sync_file_info(&empty_file, file->num);
+        sync_file_info(file->sb, &empty_file, file->num);
         
         /* clear name */
         struct file_name file_name = {0};
-        sync_file_name(file->num, file_name.buf);
+        sync_file_name(file->sb, file->num, file_name.buf);
     }
-    free_file_num(file->num);
+    free_file_num(file->sb, file->num);
 
     free(file);
 }
 
-void dump_all_file(void)
+void dump_all_file(struct super_block *sb)
 {
     int i;
     struct file *f;
     
     printf("==== dump files ====\n");
-    struct super_block *sb = &dolphin_sb;
     struct file tmp_file;
     for (i = 0; i < sb->file_count; i++) {
-        load_file_info(&tmp_file, i);
+        load_file_info(sb, &tmp_file, i);
         f = &tmp_file;
         if (f->hash != 0) {
             printf("  [%d] hash:%p, table:%lld, size:%lld, ref:%d, mode:%x\n",
@@ -283,17 +274,17 @@ unsigned long str2hash(unsigned char *str)
     return hash;
 }
 
-static struct file *create_file(char *path, int mode)
+static struct file *create_file(struct super_block *sb, char *path, int mode)
 {
     if (!path || !strlen(path) || !mode)
         return NULL;
 
-    struct file *f = alloc_file();
+    struct file *f = alloc_file(sb);
     if (!f)
         return NULL;
     
     f->hash = str2hash(path);
-    f->data_table = alloc_data_block();
+    f->data_table = alloc_data_block(sb);
     f->ref = 0;
     f->mode = mode;
     f->file_size = 0;
@@ -302,22 +293,20 @@ static struct file *create_file(char *path, int mode)
         return NULL;
     }
 
-    struct super_block *sb = &dolphin_sb;
-
     /* NOTICE: clear data table */
     memset(generic_io_block, 0, sizeof(generic_io_block));
     write_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     /* sync file to disk */
-    sync_file_info(f, f->num);
+    sync_file_info(sb, f, f->num);
 
     /* sync file name to disk */
-    sync_file_name(f->num, path);
+    sync_file_name(sb, f->num, path);
 
     return f;
 }
 
-static struct file *search_file(char *path)
+static struct file *search_file(struct super_block *sb, char *path)
 {
     if (!path || !strlen(path))
         return NULL;
@@ -327,10 +316,10 @@ static struct file *search_file(char *path)
     if (!f) {
         return NULL;
     }
-    struct super_block *sb = &dolphin_sb;
     for (i = 0; i < sb->file_count; i++) {
-        load_file_info(f, i);
+        load_file_info(sb, f, i);
         if (f->hash == str2hash(path)) {
+            f->sb = sb;
             return f;
         }
     }
@@ -350,12 +339,12 @@ static int check_empty_u32(unsigned int *table, unsigned long size)
     return 1;
 }
 
-int delete_file(char *path)
+int delete_file(struct super_block *sb, char *path)
 {
     if (!path || !strlen(path))
         return -1;
     
-    struct file *f = search_file(path);
+    struct file *f = search_file(sb, path);
     if (!f) {
         printf("delete: err: file %s not found\n", path);
         return -1;
@@ -364,15 +353,15 @@ int delete_file(char *path)
     /* 1. 删除文件数据 */
     if (f->file_size > 0) {
         unsigned long blocks;
-        blocks = DIV_ROUND_UP(f->file_size, dolphin_sb.block_size);
+        blocks = DIV_ROUND_UP(f->file_size, sb->block_size);
         int i;
 
         for (i = 0; i < blocks; i++) {
-            long ret = walk_file_block(f, i * dolphin_sb.block_size);
+            long ret = walk_file_block(f, i * sb->block_size);
             assert(ret > 0);
         }
         for (i = 0; i < blocks; i++) {
-            long ret = free_file_block(f, i * dolphin_sb.block_size);
+            long ret = free_file_block(f, i * sb->block_size);
             if (ret != 0) {
                 printf("[ERR] delete_file: free block %d failed with %d\n", i, ret);
             }
@@ -381,31 +370,29 @@ int delete_file(char *path)
     
     assert(f->data_table > 0);
 
-    struct super_block *sb = &dolphin_sb;
-
     memset(generic_io_block, 0, sizeof(generic_io_block));
     read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
 
     assert(check_empty_u32(generic_io_block, sizeof(generic_io_block) / sizeof(unsigned int)));
 
     /* free data table */
-    free_block(f->data_table);
+    free_block(sb, f->data_table);
 
     /* 2. 删除文件结构 */
     free_file(f, 1);
     return 0;
 }
 
-int open_file(char *path, int flags)
+int open_file(struct super_block *sb, char *path, int flags)
 {
     if (!path || !strlen(path) || !flags)
         return -1;
     
-    struct file *f = search_file(path);
+    struct file *f = search_file(sb, path);
     if (!f) {
         /* file not found, create new */
         if (flags & FF_CRATE) {
-            f = create_file(path, flags & FF_RDWR);
+            f = create_file(sb, path, flags & FF_RDWR);
             if (!f) {
                 return -1;
             }
@@ -420,9 +407,10 @@ int open_file(char *path, int flags)
     of->f = f;
     of->oflags = flags;
     of->off = 0;
+    of->sb = sb;
 
     f->ref++;
-    sync_file_info(f, f->num);
+    sync_file_info(sb, f, f->num);
 
     return ofile_idx(of);
 }
@@ -440,7 +428,7 @@ int close_file(int file)
 
     of->oflags = 0;
     of->off = 0;
-    sync_file_info(of->f, of->f->num);
+    sync_file_info(of->f->sb, of->f, of->f->num);
     /* 释放文件信息内存 */
     free(of->f);
     of->f = NULL;
@@ -452,7 +440,7 @@ long get_file_block(struct file *f, unsigned long off)
 {
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
-    struct super_block *sb = &dolphin_sb;
+    struct super_block *sb = f->sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
     read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
@@ -462,7 +450,7 @@ long get_file_block(struct file *f, unsigned long off)
 
     l1_val = l1[GET_BGD_OFF(off)];
     if (!l1_val) { // alloc BMD block
-        l1_val = alloc_data_block();
+        l1_val = alloc_data_block(sb);
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
         write_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
@@ -479,7 +467,7 @@ long get_file_block(struct file *f, unsigned long off)
     
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
-        l2_val = alloc_data_block();
+        l2_val = alloc_data_block(sb);
         l2[GET_BMD_OFF(off)] = l2_val;
         // sync block
         write_block(sb->blkdev, l1_val, 0, generic_io_block, sizeof(generic_io_block));
@@ -496,7 +484,7 @@ long walk_file_block(struct file *f, unsigned long off)
 {
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
-    struct super_block *sb = &dolphin_sb;
+    struct super_block *sb = f->sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
     read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
@@ -529,7 +517,7 @@ long free_file_block(struct file *f, unsigned long off)
     unsigned int *l1, *l2;
     unsigned int l1_val, l2_val;
     int i;
-    struct super_block *sb = &dolphin_sb;
+    struct super_block *sb = f->sb;
 
     memset(generic_io_block, 0, sizeof(generic_io_block));
     read_block(sb->blkdev, f->data_table, 0, generic_io_block, sizeof(generic_io_block));
@@ -555,7 +543,7 @@ long free_file_block(struct file *f, unsigned long off)
     }
 
     /* free data block */
-    free_data_block(l2_val);
+    free_data_block(sb, l2_val);
 
     l2[GET_BMD_OFF(off)] = 0; /* clear data block in l2 */
 
@@ -575,7 +563,7 @@ long free_file_block(struct file *f, unsigned long off)
     l1 = (unsigned int *)generic_io_block;
 
     /* free l2 block */
-    free_block(l1_val);
+    free_block(sb, l1_val);
 
     // printf("%s:%d: free l2 block: %d at %d\n", __func__, __LINE__, l1_val, l2_val);
 
@@ -598,7 +586,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
     long write_len;
     char *pbuf;
     long ret;
-    struct super_block *sb = &dolphin_sb;
+    struct super_block *sb = f->sb;
 
     next_off = off;
     left_len = len;
@@ -637,7 +625,7 @@ long do_write_file(struct file *f, long off, void *buf, long len)
         /* 只有在偏移+chunk大小超过文件大小的时候，才去更新文件大小 */
         if (next_off + chunk > f->file_size) {
             f->file_size = next_off + chunk;
-            sync_file_info(f, f->num);
+            sync_file_info(sb, f, f->num);
         }
 
         write_len += chunk;
@@ -674,7 +662,7 @@ long do_read_file(struct file *f, long off, void *buf, long len)
     char *pbuf;
     long ret;
     long file_size;
-    struct super_block *sb = &dolphin_sb;
+    struct super_block *sb = f->sb;
 
     file_size = f->file_size;
     next_off = off;
@@ -768,7 +756,7 @@ int seek_file(int file, int off, int pos)
     return of->off;
 }
 
-void list_files(void)
+void list_files(struct super_block *sb)
 {
     long idx, next;
     char name[FILE_NAME_LEN];
@@ -777,46 +765,46 @@ void list_files(void)
 
     while (idx >= 0) {
         memset(name, 0, sizeof(name));
-        next = walk_file_name(idx, name, FILE_NAME_LEN);
+        next = walk_file_name(sb, idx, name, FILE_NAME_LEN);
         if (name[0] != 0) {
             struct file_stat stat;
-            stat_file(name, &stat);
+            stat_file(sb, name, &stat);
             printf("[%d] name:%s num: %d size: %d mode:%x\n", idx, name, stat.num, stat.file_size, stat.mode);
         }
         idx = next;
     }
 }
 
-int rename_file(char *src_name, char *dest_name)
+int rename_file(struct super_block *sb, char *src_name, char *dest_name)
 {
     struct file *f;
     
     if (!src_name || !dest_name) {
         return -1;
     }
-    f = search_file(src_name);
+    f = search_file(sb, src_name);
     if (!f) {
         return -1;
     }
 
     /* 修改名字 */
-    sync_file_name(f->num, dest_name);
+    sync_file_name(f->sb, f->num, dest_name);
 
     /* 修改名字hash */
     f->hash = str2hash(dest_name);
-    sync_file_info(f, f->num);
+    sync_file_info(sb, f, f->num);
 
     return 0;
 }
 
-int stat_file(char *path, struct file_stat *stat)
+int stat_file(struct super_block *sb, char *path, struct file_stat *stat)
 {
     struct file *f;
     
     if (!path) {
         return -1;
     }
-    f = search_file(path);
+    f = search_file(sb, path);
     if (!f) {
         return -1;
     }

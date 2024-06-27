@@ -50,8 +50,8 @@ struct super_block
     struct blkdev *blkdev;
 };
 
-long alloc_block(void);
-int free_block(long blk);
+long alloc_block(struct super_block *sb);
+int free_block(struct super_block *sb, long blk);
 #define alloc_data_block alloc_block
 #define free_data_block free_block
 
