@@ -34,3 +34,20 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
     * open_blkdev, close_blkdev, read_block, write_block，get_capacity
     * (Opt) sync_block
 
+## 使用
+
+1. 安装构建程序
+
+本项目使用xmake进行构建，需要先安装xmake，参考这个链接自行安装下载 [xmake](https://xmake.io/mirror/zh-cn/guide/installation.html)
+
+2. 创建虚拟磁盘
+
+```bash
+./gendisk.sh
+```
+
+3. 编译源码并运行
+
+```bash
+./run.sh
+```
