@@ -1,6 +1,6 @@
 # DolphinFS
 
-DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表映射作为数据索引，基于buddy作为块分配管理的文件系统，可用于大块文件存储。
+DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表映射作为数据索引，基于buddy作为块分配管理的文件系统，可用于大块文件存储。比如在嵌入式领域替代FatFS，做音频，视频，图形相关存储。
 
 ## 功能
 
@@ -22,14 +22,15 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
 * 测试文件读写性能
 * 添加块缓存
 * 添加tlb缓存，提高文件命中率
+* 基于buddy进行块管理
 
 ## 框架
 
 - 文件 API
-    * FS_OpenFile, FS_CloseFile, FS_ReadFile, FS_WriteFile, FS_SeekFile, FS_CreateFile, FS_RemoveFile,
-    * (Opt) FS_RenameFile, FS_CopyFile
-    * (Opt) FS_OpenDir, FS_CloseDir, FS_RewindDir, FS_ReadDir
-- 块 API（后续考虑和DeviceIO兼容）
-    * IO_OpenBlock, IO_CloseBlock, IO_ReadBlock, IO_WriteBlock
-    * (Opt) IO_SyncBlock
+    * open_file, close_file, read_file, write_file, seek_file, delete_file,
+    * (Opt) rename_file, stat_file
+    * (Opt) open_dir, close_dir, rewind_dir, read_dir
+- 块 API
+    * open_blkdev, close_blkdev, read_block, write_block，get_capacity
+    * (Opt) sync_block
 
