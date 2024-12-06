@@ -756,6 +756,20 @@ int seek_file(int file, int off, int pos)
     return of->off;
 }
 
+long tell_file(int file)
+{
+    long ret;
+    if (file < 0 || file >= MAX_OPEN_FILE)
+        return -1;
+    
+    struct ofile *of = idx_ofile(file);
+    struct file *f;
+    if (!of->f)
+        return -1;
+    
+    return of->off;
+}
+
 void list_files(struct super_block *sb)
 {
     long idx, next;

@@ -59,6 +59,7 @@ int close_file(int file);
 long write_file(int file, void *buf, long len);
 long read_file(int file, void *buf, long len);
 int seek_file(int file, int off, int pos);
+long tell_file(int file);
 
 long walk_file_name(struct super_block *sb, long file_num, void *buf, long len);
 void list_files(struct super_block *sb);
