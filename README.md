@@ -13,10 +13,10 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
 * 将文件表纳入块管理
 * 基于磁盘块的功能
 * 添加格式化功能
+* 添加交互接口，通过命令行进行格式化，文件读写
 
 ## TODO
 
-* 添加交互接口，通过命令行进行格式化，文件读写
 * 将文件系统接入windows/linux，可以直接在上面创建文件系统
 * 加入目录层拓展功能
 * 测试文件读写性能
@@ -36,17 +36,7 @@ DolphinFS是一个基于key-value键值作为目录索引，基于类mmu页表�
 
 ## 使用
 
-1. 安装构建程序
-
-本项目使用xmake进行构建，需要先安装xmake，参考这个链接自行安装下载 [xmake](https://xmake.io/mirror/zh-cn/guide/installation.html)
-
-2. 创建虚拟磁盘
-
-```bash
-./gendisk.sh
-```
-
-3. 编译源码并运行
+使用run脚本运行，包含编译，生成磁盘，文件读写测试，清除文件。
 
 ```bash
 ./run.sh

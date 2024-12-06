@@ -63,7 +63,7 @@ int dolphin_mount(char *disk, struct super_block *sb)
     memcpy(sb, generic_io_block, sizeof(struct super_block));
     /* 再次读取设备 */
     sb->blkdev = bdev;
-    dump_sb(sb);
+    // dump_sb(sb);
 
     if (sb->magic != SUPER_BLOCK_MAGIC) {
         return -1;

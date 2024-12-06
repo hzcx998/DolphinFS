@@ -1,0 +1,1 @@
+gcc *.c -I./ -o dolpfs -w
