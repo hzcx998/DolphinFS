@@ -274,7 +274,7 @@ unsigned long str2hash(unsigned char *str)
     return hash;
 }
 
-static struct file *create_file(struct super_block *sb, char *path, int mode)
+struct file *create_file(struct super_block *sb, char *path, int mode)
 {
     if (!path || !strlen(path) || !mode)
         return NULL;
@@ -392,7 +392,7 @@ int open_file(struct super_block *sb, char *path, int flags)
     if (!f) {
         /* file not found, create new */
         if (flags & FF_CRATE) {
-            f = create_file(sb, path, flags & FF_RDWR);
+            f = create_file(sb, path, flags & (~FF_CRATE));
             if (!f) {
                 return -1;
             }

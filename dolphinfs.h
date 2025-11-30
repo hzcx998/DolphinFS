@@ -5,6 +5,9 @@
 #include <fsblk.h>
 #include <file.h>
 #include <blkdev.h>
+#include <dir.h>
+
+#include "fsconfig.h"
 
 #define min(x, y) (x) < (y) ? (x) : (y)
 #define max(x, y) (x) > (y) ? (x) : (y)

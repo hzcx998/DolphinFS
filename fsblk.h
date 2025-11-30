@@ -1,6 +1,8 @@
 #ifndef _FSBLK_H
 #define _FSBLK_H
 
+#include "fsconfig.h"
+
 #define BLOCK_AREA_SB 0
 #define BLOCK_AREA_MAN 1
 #define BLOCK_AREA_DATA 2

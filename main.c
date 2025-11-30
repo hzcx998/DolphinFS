@@ -17,6 +17,7 @@ int cmd_copy(const char* src_path, const char* dest_path);
 int cmd_move(const char* src_path, const char* dest_path);
 int cmd_mkdir(const char* dir_path);
 int cmd_test(void);
+int cmd_test_dir(void);
 
 // Function implementations
 int cmd_mkfs(void) {
@@ -178,7 +179,7 @@ int cmd_get(const char* src_path, const char* dest_path) {
         }
     }
 
-    if (tell_file(src_file) != seek_file(src_file, 0, SEEK_END)) {
+    if (tell_file(src_file) != seek_file(src_file, 0, FP_END)) {
         perror("Error reading source file");
         close_file(src_file);
         fclose(dest_file);
@@ -311,7 +312,7 @@ int cmd_copy(const char* src_path, const char* dest_path) {
         }
     }
 
-    if (tell_file(src_file) != seek_file(src_file, 0, SEEK_END)) {
+    if (tell_file(src_file) != seek_file(src_file, 0, FP_END)) {
         perror("Error reading source file");
         close_file(src_file);
         close_file(dest_file);
@@ -466,11 +467,17 @@ int main(int argc, char* argv[]) {
         }
         return cmd_mkdir(argv[2]);
     } else if (strcmp(argv[1], "test") == 0) {
-        if (argc != 3) {
+        if (argc != 2) {
             printf("Usage: %s test\n", argv[0]);
             return 1;
         }
         return cmd_test();
+    } else if (strcmp(argv[1], "test_dir") == 0) {
+        if (argc != 2) {
+            printf("Usage: %s test\n", argv[0]);
+            return 1;
+        }
+        return cmd_test_dir();
     } else {
         printf("Unknown command: %s\n", argv[1]);
         return 1;

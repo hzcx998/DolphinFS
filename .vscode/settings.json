@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "fsconfig.h": "c",
+        "blkdev.h": "c",
+        "file.h": "c"
+    }
+}
