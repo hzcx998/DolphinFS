@@ -5,15 +5,15 @@
 #include <string.h>
 #include <assert.h>
 
-struct fs_dir_open open_dirs[MAX_OPEN_DIR];
+struct fs_dir_open open_dirs[MAX_OPEN_DIR] = {0};
 
 struct fs_dir_open *alloc_open_dir(void)
 {
     int i;
     struct fs_dir_open *od;
-    for (i = 0; i < MAX_OPEN_FILE; i++) {
+    for (i = 0; i < MAX_OPEN_DIR; i++) {
         od = &open_dirs[i];
-        if (od->fd == -1) {
+        if (od->sb == NULL) {
             return od;
         }
     }
@@ -26,22 +26,12 @@ int free_open_dir(struct fs_dir_open *od)
     if (!od) {
         return -1;
     }
-    od->fd = -1;
+    od->sb = NULL;
     return 0;
 }
 
 #define odir_idx(od) ((od) - &open_dirs[0])
 #define idx_odir(idx) (&open_dirs[(idx)])
-
-void init_dir_open(void)
-{
-    int i;
-    struct fs_dir_open *od;
-    for (i = 0; i < MAX_OPEN_FILE; i++) {
-        od = &open_dirs[i];
-        od->fd = -1;
-    }
-}
 
 /**
  * @brief 清理路径，移除其中的 "."、".." 和多余的分隔符。
@@ -291,8 +281,7 @@ static int find_dir_bitmap_next(struct fs_dir_head *head, int start)
     for (; i < DIR_BITMAP_SIZE; i++) {
         bit = &head->bitmap[i];
         for (; j < DIR_BITMAP_ITEM_SIZE; j++) {
-            if (!(*bit & (1 << j))) {
-                *bit |= (1 << j);
+            if ((*bit & (1 << j)) != 0) {
                 return i * DIR_BITMAP_ITEM_SIZE + j;
             }
         }
@@ -522,7 +511,7 @@ static int release_dir_info(struct fs_dir_open *od)
     if (close_file(od->fd)) {
         return -1;
     }
-    od->sb = NULL;
+    od->fd = -1;
 
     return free_open_dir(od);    
 }
@@ -549,7 +538,7 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
         return -1;
     }
 
-    printf("开始解析路径: %s\n", path);
+    // printf("开始解析路径: %s\n", path);
     
     clean_path(path, full_path, sizeof(full_path));
 
@@ -558,11 +547,11 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
     pos = full_path;
     // 初始化组件提取
     pos = extract_next_component(full_path, component, sizeof(component));
-    printf("pos: %p, component:%s\n", pos, component);
+    // printf("pos: %p, component:%s\n", pos, component);
     if (pos == NULL && component[0] != '\0') {
         // 只有一个组件的情况
         pos = extract_next_component(NULL, component, sizeof(component));
-        printf("pos: %p, component:%s\n", pos, component);
+        // printf("pos: %p, component:%s\n", pos, component);
     }
 
     /* 检查是根目录的情况 */
@@ -574,10 +563,10 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
         int result;
         
         if (pos != NULL && pos[0] != '\0') {
-            printf("解析下一个组件，相对路径：%s\n", pos);
+            // printf("解析下一个组件，相对路径：%s\n", pos);
         }
-        printf("第%d级 - 检查组件: '%s'\n", level, component);
-        printf("当前路径: %s\n", current_path);
+        // printf("第%d级 - 检查组件: '%s'\n", level, component);
+        // printf("当前路径: %s\n", current_path);
         
         // 检查当前组件是否存在
         result = check_component_exists(sb, current_path, component, new_path, sizeof(new_path));
@@ -630,7 +619,7 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
 
         // 获取下一个组件
         if (pos != NULL && pos[0] != '\0') {
-            printf("解析下一个组件，相对路径：%s\n", pos);
+            // printf("解析下一个组件，相对路径：%s\n", pos);
             pos = extract_next_component(pos, component, sizeof(component));
         } else {
             // 加载目录信息
@@ -645,10 +634,10 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
 
         }
         
-        printf("---\n");
+        // printf("---\n");
     } while (component[0] != '\0');
     
-    printf("✓ 路径解析完成: 所有 %d 个组件都存在\n", level);
+    // printf("✓ 路径解析完成: 所有 %d 个组件都存在\n", level);
     return 0;
 }
 

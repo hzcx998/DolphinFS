@@ -16,6 +16,8 @@ int cmd_delete_file(const char* file_path);
 int cmd_copy(const char* src_path, const char* dest_path);
 int cmd_move(const char* src_path, const char* dest_path);
 int cmd_mkdir(const char* dir_path);
+int cmd_rmdir(const char* dir_path);
+int cmd_cat(const char* path);
 int cmd_test(void);
 int cmd_test_dir(void);
 
@@ -43,6 +45,11 @@ int cmd_mkfs(void) {
     if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
         printf("mount dolphinfs failed!\n");
         return -1;
+    }
+
+    /* create root dir */
+    if (create_dir(&dolphin_sb, "/")) {
+        printf("create root failed!\n");
     }
 
     /* 挂载成功 */
@@ -87,8 +94,15 @@ int cmd_put(const char* src_path, const char* dest_path) {
     }
 
     // Open the destination file in the file system
+    if (new_file(&dolphin_sb, dest_path, FF_RDWR)) {
+        perror("Error create destination file");
+        fclose(src_file);
+        ret = 1;
+        goto end;
+    }
+
     // NOTE: This example uses fopen, but you should use your file system's API
-    dest_file = open_file(&dolphin_sb, dest_path, FF_WRITE | FF_CRATE);
+    dest_file = open_file(&dolphin_sb, dest_path, FF_WRITE);
     if (dest_file == -1) {
         perror("Error opening destination file");
         fclose(src_file);
@@ -130,7 +144,7 @@ end:
 
 int cmd_get(const char* src_path, const char* dest_path) {
     // Implement the operation to copy a file from the file system to the current directory
-    printf("Copying %s from the file system to %s\n", src_path, dest_path);
+    printf("Get %s from the file system to %s\n", src_path, dest_path);
 
     /* init disk */
     init_blkdev();
@@ -179,8 +193,12 @@ int cmd_get(const char* src_path, const char* dest_path) {
         }
     }
 
-    if (tell_file(src_file) != seek_file(src_file, 0, FP_END)) {
-        perror("Error reading source file");
+    // check file finished
+    long cur_pos = tell_file(src_file);
+    long end_pos = seek_file(src_file, 0, FP_END);
+    
+    if (cur_pos != end_pos) {
+        printf("Error reading source file: %d, %d\n", cur_pos, end_pos);
         close_file(src_file);
         fclose(dest_file);
         ret = 1;
@@ -216,7 +234,54 @@ int cmd_list(const char* dir_path) {
         return -1;
     }
 
-    list_files(&dolphin_sb);
+    // list_files(&dolphin_sb);
+    if (list_dir(&dolphin_sb, dir_path)) {
+        printf("List dir %s failed!\n", dir_path);
+        return -1;
+    }
+
+    /* 挂载成功 */
+    dolphin_unmount(&dolphin_sb);
+
+    exit_blkdev();
+
+    printf("List filesystem success.\n");
+
+    return 0; // Return 0 to indicate success
+}
+
+int cmd_cat(const char* path) {
+    // Implement the operation to list files in a directory of the file system
+    printf("Cat %s in the file system\n", path);
+
+    /* init disk */
+    init_blkdev();
+    list_blkdev();
+
+    struct super_block dolphin_sb;
+
+    /* 挂载文件系统 */
+    if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
+        printf("Mount filesystem failed!\n");
+        return -1;
+    }
+
+    int fd = open_file(&dolphin_sb, path, FF_READ);
+    if (fd < 0) {
+        printf("open file %s failed!\n", path);
+    } else {
+        char buf[256];
+        int len;
+        
+        do {
+            memset(buf, 0, 256);
+            len = read_file(fd, buf, 256);
+            printf("%s", buf);
+        } while (len > 0);
+
+        printf("\n");
+        close_file(fd);
+    }
 
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
@@ -249,7 +314,7 @@ int cmd_delete_file(const char* file_path) {
         return -1;
     }
 
-    if (!delete_file(&dolphin_sb, file_path)) {    
+    if (!del_file(&dolphin_sb, file_path)) {    
         printf("Delete file %s success.\n", file_path);
     } else {
         printf("Delete file %s failed!\n", file_path);
@@ -293,7 +358,13 @@ int cmd_copy(const char* src_path, const char* dest_path) {
     }
 
     // Open the destination file in the file system
-    dest_file = open_file(&dolphin_sb, dest_path, FF_WRITE | FF_CRATE);
+    if (new_file(&dolphin_sb, dest_path, FF_RDWR)) {
+        perror("Error create destination file");
+        fclose(src_file);
+        ret = 1;
+        goto end;
+    }
+    dest_file = open_file(&dolphin_sb, dest_path, FF_WRITE);
     if (dest_file == -1) {
         perror("Error opening destination file");
         close_file(src_file);
@@ -349,6 +420,7 @@ int cmd_move(const char* src_path, const char* dest_path) {
         return -1;
     }
 
+    // use dir rename
     if (!rename_file(&dolphin_sb, src_path, dest_path)) {    
         printf("Move file %s to %s success.\n", src_path, dest_path);
     } else {
@@ -365,8 +437,7 @@ int cmd_move(const char* src_path, const char* dest_path) {
 
 int cmd_mkdir(const char* dir_path) {
     // Implement the operation to create a directory in the file system
-    printf("Creating directory %s not support!\n", dir_path);
-
+    printf("Creating directory %s.\n", dir_path);
     
     /* init disk */
     init_blkdev();
@@ -380,19 +451,12 @@ int cmd_mkdir(const char* dir_path) {
         return -1;
     }
 
-    int fd = open_file(&dolphin_sb, dir_path, FF_WRITE | FF_CRATE);
-    if (fd == -1) {
-        perror("Error create dir file\n");
-            
-        /* 挂载成功 */
+    if (create_dir(&dolphin_sb, dir_path)) {
+        printf("Create dir %s failed!\n", dir_path);
         dolphin_unmount(&dolphin_sb);
-
         exit_blkdev();
-
-        return 1;
+        return -1;
     }
-
-    close_file(fd);
 
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
@@ -400,6 +464,39 @@ int cmd_mkdir(const char* dir_path) {
     exit_blkdev();
 
     printf("Creating directory %s success.\n", dir_path);
+
+    return 0; // Return 0 to indicate success
+}
+
+int cmd_rmdir(const char* dir_path) {
+    // Implement the operation to create a directory in the file system
+    printf("Remove directory %s.\n", dir_path);
+
+    /* init disk */
+    init_blkdev();
+    list_blkdev();
+
+    struct super_block dolphin_sb;
+
+    /* 挂载文件系统 */
+    if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
+        printf("Mount filesystem failed!\n");
+        return -1;
+    }
+
+    if (delete_dir(&dolphin_sb, dir_path)) {
+        printf("Remove dir %s failed!\n", dir_path);
+        dolphin_unmount(&dolphin_sb);
+        exit_blkdev();
+        return -1;
+    }
+
+    /* 挂载成功 */
+    dolphin_unmount(&dolphin_sb);
+
+    exit_blkdev();
+
+    printf("Remove directory %s success.\n", dir_path);
 
     return 0; // Return 0 to indicate success
 }
@@ -417,6 +514,8 @@ int main(int argc, char* argv[]) {
         printf("  copy <src> <dest>\n");
         printf("  move <src> <dest>\n");
         printf("  mkdir <dir>\n");
+        printf("  rmdir <dir>\n");
+        printf("  cat <file>\n");
         printf("  test\n");
         return 1;
     }
@@ -442,6 +541,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         return cmd_list(argv[2]);
+    } else if (strcmp(argv[1], "cat") == 0) {
+        if (argc != 3) {
+            printf("Usage: %s cat <dir>\n", argv[0]);
+            return 1;
+        }
+        return cmd_cat(argv[2]);
     } else if (strcmp(argv[1], "delete") == 0) {
         if (argc != 3) {
             printf("Usage: %s delete <file>\n", argv[0]);
@@ -466,6 +571,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         return cmd_mkdir(argv[2]);
+    } else if (strcmp(argv[1], "rmdir") == 0) {
+        if (argc != 3) {
+            printf("Usage: %s rmdir <dir>\n", argv[0]);
+            return 1;
+        }
+        return cmd_rmdir(argv[2]);
     } else if (strcmp(argv[1], "test") == 0) {
         if (argc != 2) {
             printf("Usage: %s test\n", argv[0]);

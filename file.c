@@ -658,6 +658,7 @@ long do_read_file(struct file *f, long off, void *buf, long len)
     long vir_blk, phy_blk, blk_off, chunk;
     long next_off;
     long left_len; // 必须是有符号数
+    long file_left; // 必须是有符号数
     long read_len;
     char *pbuf;
     long ret;
@@ -672,15 +673,17 @@ long do_read_file(struct file *f, long off, void *buf, long len)
 
     if (off >= file_size)
         return 0;
+    
+    file_left = file_size - next_off;
 
-    while (left_len > 0 && file_size > 0) {
+    while (left_len > 0 && (file_left) > 0) {
         /* 计算出需要访问的位置，以及大小 */
         vir_blk = next_off / BLOCK_SIZE;
         blk_off = next_off % BLOCK_SIZE;
         /* 读取buf大小，直到文件结束 */
         chunk = min(left_len, BLOCK_SIZE - blk_off);
-        chunk = min(file_size, chunk);
-
+        chunk = min(chunk, file_left);
+        
         /* 通过文件表获取物理块位置 */
         ret = get_file_block(f, vir_blk * BLOCK_SIZE);
         if (ret < 0) { // 没有可用块
@@ -702,7 +705,7 @@ long do_read_file(struct file *f, long off, void *buf, long len)
         pbuf += chunk;
         next_off += chunk;
         left_len -= chunk;
-        file_size -= chunk;
+        file_left = file_size - next_off;
     }
     return read_len;
 }

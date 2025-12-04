@@ -33,10 +33,6 @@ int dolphin_mkfs(char *disk, struct super_block *sb)
     /* init file info */
     init_file_info(sb, MAX_FILES);
 
-#if defined(OPT_FS_DIR)
-    init_dir_open();
-#endif
-
     /* write sb info to disk */
     memset(generic_io_block, 0, sizeof(generic_io_block));
     memcpy(generic_io_block, sb, sizeof(*sb));

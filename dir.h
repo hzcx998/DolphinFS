@@ -39,6 +39,8 @@ int seek_dir(int dir, int pos);
 int read_dir(int dir, struct fs_dir_entry *de);
 int close_dir(int dir);
 
+int list_dir(struct super_block *sb, const char *path);
+
 void init_dir_open(void);
 
 #endif

@@ -141,6 +141,7 @@ int cmd_test_dir(void)
     list_blkdev();
 
     test_fs_dir(TEST_RAM_DEV);
+    test_fs_dir(TEST_DISK_DEV);
 
     exit_blkdev();
     return 0;
