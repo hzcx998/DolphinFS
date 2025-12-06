@@ -5,6 +5,14 @@
 #include <string.h>
 #include <assert.h>
 
+// mkdir
+#include <sys/stat.h>
+#include <sys/types.h>
+
+// stat
+#include <unistd.h>
+#include <dirent.h>
+
 #define CLI_DISK_DEV "disk"
 
 // Function declarations
@@ -62,51 +70,40 @@ int cmd_mkfs(void) {
     return 0; // Return 0 to indicate success
 }
 
-int cmd_put(const char* src_path, const char* dest_path) {
-    // Implement the operation to copy a file from the current directory to the file system
-    printf("Copying %s to %s in the file system\n", src_path, dest_path);
+static int put_one_file(struct super_block *sb, const char* src_path, const char* dest_path)
+{
     int ret = 0;
-
-    /* init disk */
-    init_blkdev();
-    list_blkdev();
-
-    struct super_block dolphin_sb;
-
-    /* 挂载文件系统 */
-    if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
-        printf("Mount filesystem failed!\n");
-        return -1;
-    }
 
     FILE *src_file;
     int dest_file;
     
     char buffer[1024];
     size_t bytes_read;
+    
+    printf("[PUT] put file from %s to %s\n", src_path, dest_path);
 
     // Open the source file in the current directory
     src_file = fopen(src_path, "rb");
     if (src_file == NULL) {
         perror("Error opening source file");
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
     // Open the destination file in the file system
-    if (new_file(&dolphin_sb, dest_path, FF_RDWR)) {
+    if (new_file(sb, dest_path, FF_RDWR)) {
         perror("Error create destination file");
         fclose(src_file);
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
     // NOTE: This example uses fopen, but you should use your file system's API
-    dest_file = open_file(&dolphin_sb, dest_path, FF_WRITE);
+    dest_file = open_file(sb, dest_path, FF_WRITE);
     if (dest_file == -1) {
         perror("Error opening destination file");
         fclose(src_file);
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
@@ -116,7 +113,7 @@ int cmd_put(const char* src_path, const char* dest_path) {
             perror("Error writing to destination file");
             fclose(src_file);
             close_file(dest_file);
-            ret = 1;
+            ret = -1;
             goto end;
         }
     }
@@ -125,7 +122,7 @@ int cmd_put(const char* src_path, const char* dest_path) {
         perror("Error reading source file");
         fclose(src_file);
         close_file(dest_file);
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
@@ -133,25 +130,77 @@ int cmd_put(const char* src_path, const char* dest_path) {
     fclose(src_file);
     close_file(dest_file);
 end:
-    /* 挂载成功 */
-    dolphin_unmount(&dolphin_sb);
-
-    exit_blkdev();
-
-    printf("File %s copied to %s %s\n", src_path, dest_path, !ret ? "successfully" : "failed");
-    return ret; // Return 0 to indicate success
+    // printf("File %s put to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
+    return ret;
 }
 
-int cmd_get(const char* src_path, const char* dest_path) {
-    // Implement the operation to copy a file from the file system to the current directory
-    printf("Get %s from the file system to %s\n", src_path, dest_path);
+static int put_one_dir(struct super_block *sb, const char* src_path, const char* dest_path)
+{
+    char src_buf[256];
+    char dst_buf[256];
+    DIR *dir;
+    struct dirent *entry;
+    struct stat statbuf;
+
+    if ((dir = opendir(src_path)) == NULL) {
+        printf("open dir %s failed!\n", src_path);
+        return -1;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // build path
+        memset(src_buf, 0, sizeof(src_buf));
+        snprintf(src_buf, sizeof(src_buf), "%s/%s", src_path, entry->d_name);
+
+        memset(dst_buf, 0, sizeof(dst_buf));
+        snprintf(dst_buf, sizeof(dst_buf), "%s/%s", dest_path, entry->d_name);
+
+        if (stat(src_buf, &statbuf) == -1) {
+            printf("stat file %s failed!\n", src_buf);
+            continue; // 获取信息失败，跳过该条目
+        }
+
+        if (S_ISDIR(statbuf.st_mode)) { // dir
+            
+            if (create_dir(sb, dst_buf)) {
+                printf("mkdir dest %s faild!\n", dst_buf);
+                return -1;
+            }
+
+            if (put_one_dir(sb, src_buf, dst_buf)) {
+                printf("put dir src %s dest %s faild!\n", src_buf, dst_buf);
+                return -1;
+            }
+
+        } else {
+            // copy file
+            if (put_one_file(sb, src_buf, dst_buf)) {
+                printf("put file src %s dest %s faild!\n", src_buf, dst_buf);
+                return -1;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    return 0;
+}
+
+int cmd_put(const char* src_path, const char* dest_path) {
+    // Implement the operation to copy a file from the current directory to the file system
+    printf("[++++++++] Copying %s to %s in the file system\n", src_path, dest_path);
 
     /* init disk */
     init_blkdev();
     list_blkdev();
-    int ret = 0;
 
     struct super_block dolphin_sb;
+    int ret = 0;
 
     /* 挂载文件系统 */
     if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
@@ -159,17 +208,59 @@ int cmd_get(const char* src_path, const char* dest_path) {
         return -1;
     }
 
+    // 如果是文件，就直接推送，如果是目录，则遍历推送。
+
+    struct stat st;
+    if (stat(src_path, &st) == -1) {
+        printf("file %s not exist!\n", src_path);
+        goto end;
+    }
+
+    if ((S_ISDIR(st.st_mode))) {
+        struct file_stat dst_st;
+        if (stat_file(&dolphin_sb, dest_path, &dst_st)) {
+            if (create_dir(&dolphin_sb, dest_path)) {
+                printf("mkdir dest %s faild!\n", dest_path);
+                goto end;
+            }
+        }
+
+        ret = put_one_dir(&dolphin_sb, src_path, dest_path);
+        
+        printf("Dir %s copied to %s %s\n", src_path, dest_path, 
+            (ret == 0) ? "successfully" : "failed");
+    } else {
+        ret = put_one_file(&dolphin_sb, src_path, dest_path);
+
+        printf("File %s copied to %s %s\n", src_path, dest_path, 
+            (ret == 0) ? "successfully" : "failed");
+    }
+end:
+    /* 挂载成功 */
+    dolphin_unmount(&dolphin_sb);
+
+    exit_blkdev();
+
+    printf("[++++++++] File %s put to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
+    return ret; // Return 0 to indicate success
+}
+
+static int get_one_file(struct super_block *sb, const char* src_path, const char* dest_path)
+{
     int src_file;
     FILE *dest_file;
     char buffer[1024];
     size_t bytes_read;
+    int ret = 0;
+
+    printf("[GET] get file from %s to %s\n", src_path, dest_path);
 
     // Open the source file in the file system
     // NOTE: This example uses fopen, but you should use your file system's API
-    src_file = open_file(&dolphin_sb, src_path, FF_READ);
+    src_file = open_file(sb, src_path, FF_READ);
     if (src_file == -1) {
         perror("Error opening source file");
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
@@ -178,7 +269,7 @@ int cmd_get(const char* src_path, const char* dest_path) {
     if (dest_file == NULL) {
         perror("Error opening destination file");
         close_file(src_file);
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
@@ -188,7 +279,7 @@ int cmd_get(const char* src_path, const char* dest_path) {
             perror("Error writing to destination file");
             close_file(src_file);
             fclose(dest_file);
-            ret = 1;
+            ret = -1;
             goto end;
         }
     }
@@ -201,20 +292,122 @@ int cmd_get(const char* src_path, const char* dest_path) {
         printf("Error reading source file: %d, %d\n", cur_pos, end_pos);
         close_file(src_file);
         fclose(dest_file);
-        ret = 1;
+        ret = -1;
         goto end;
     }
 
     // Close both files
     close_file(src_file);
     fclose(dest_file);
+
+end:
+    // printf("File %s get to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
+    return ret;
+}
+
+static int get_one_dir(struct super_block *sb, const char* src_path, const char* dest_path)
+{
+    char src_buf[256];
+    char dst_buf[256];
+
+    int dir = open_dir(sb, src_path);
+    if (dir < 0)
+    {
+        printf("open dir %s failed!\n", src_path);
+        return -1;
+    }
+
+    struct fs_dir_entry de;
+    
+    while (!read_dir(dir, &de))
+    {
+        // printf("%8d %8d %s\n", de.num, de.type, de.fname.buf);
+        // build path
+        memset(src_buf, 0, sizeof(src_buf));
+        snprintf(src_buf, sizeof(src_buf), "%s/%s", src_path, de.fname.buf);
+
+        memset(dst_buf, 0, sizeof(dst_buf));
+        snprintf(dst_buf, sizeof(dst_buf), "%s/%s", dest_path, de.fname.buf);
+
+        if (de.type == 1) { // dir
+            mode_t mode = 0755;
+            if (mkdir(dst_buf, mode)) {
+                printf("mkdir dest %s faild!\n", dst_buf);
+                return -1;
+            }
+
+            if (get_one_dir(sb, src_buf, dst_buf)) {
+                printf("get dir src %s dest %s faild!\n", src_buf, dst_buf);
+                return -1;
+            }
+
+        } else {
+            // copy file
+            if (get_one_file(sb, src_buf, dst_buf)) {
+                printf("get file src %s dest %s faild!\n", src_buf, dst_buf);
+                return -1;
+            }
+        }
+    }
+
+    close_dir(dir);
+
+    return 0;
+}
+
+int cmd_get(const char* src_path, const char* dest_path) {
+    // Implement the operation to copy a file from the file system to the current directory
+    printf("[--------] Get %s from the file system to %s\n", src_path, dest_path);
+
+    /* init disk */
+    init_blkdev();
+    list_blkdev();
+
+    struct super_block dolphin_sb;
+    int ret = 0;
+
+    /* 挂载文件系统 */
+    if (dolphin_mount(CLI_DISK_DEV, &dolphin_sb)) {
+        printf("Mount filesystem failed!\n");
+        return -1;
+    }
+
+    // 如果是文件，就直接获取，如果是目录，则遍历获取。
+    struct file_stat st;
+
+    if (stat_file(&dolphin_sb, src_path, &st)) {
+        printf("file %s not exist!\n", src_path);
+        goto end;
+    }
+
+    if ((st.mode & FF_DIR)) {
+        // create dest dir if not exist
+        struct stat dst_st;
+        if (stat(dest_path, &dst_st) == -1) {
+            mode_t mode = 0755;
+            if (mkdir(dest_path, mode)) {
+                printf("mkdir dest %s faild!\n", dest_path);
+                goto end;
+            }
+        }
+        ret = get_one_dir(&dolphin_sb, src_path, dest_path);
+        
+        printf("Dir %s copied to %s %s\n", src_path, dest_path, 
+            (ret == 0) ? "successfully" : "failed");
+    } else {
+        ret = get_one_file(&dolphin_sb, src_path, dest_path);
+
+        printf("File %s copied to %s %s\n", src_path, dest_path, 
+            (ret == 0) ? "successfully" : "failed");
+    }
+
 end:
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
     exit_blkdev();
 
-    printf("File %s copied to %s %s\n", src_path, dest_path, !ret ? "successfully" : "failed");
+    printf("[--------] File %s get to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
     return 0; // Return 0 to indicate success
 }
 
@@ -234,11 +427,12 @@ int cmd_list(const char* dir_path) {
         return -1;
     }
 
-    // list_files(&dolphin_sb);
     if (list_dir(&dolphin_sb, dir_path)) {
         printf("List dir %s failed!\n", dir_path);
         return -1;
     }
+
+    list_files(&dolphin_sb);
 
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
@@ -288,7 +482,7 @@ int cmd_cat(const char* path) {
 
     exit_blkdev();
 
-    printf("List filesystem success.\n");
+    printf("Cat %s done.\n", path);
 
     return 0; // Return 0 to indicate success
 }

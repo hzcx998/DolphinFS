@@ -6,7 +6,7 @@
 /**
  * 支持的文件数量
  */
-#define MAX_FILES 256
+#define MAX_FILES 2048
 #define MAX_OPEN_FILE 32
 
 #define MAX_OPEN_DIR 32

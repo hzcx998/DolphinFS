@@ -1,1 +1,1 @@
-dd if=/dev/zero of=disk.vhd bs=1024 count=16384
+dd if=/dev/zero of=disk.vhd bs=8192 count=16384

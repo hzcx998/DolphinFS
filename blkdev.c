@@ -5,6 +5,13 @@
 #include <string.h>
 #include <assert.h>
 
+#define USE_LINUX 1
+
+#ifdef USE_LINUX
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
 #define CONFIG_USE_DISK 1
 
 struct ram_dev_data {
@@ -14,7 +21,11 @@ struct ram_dev_data {
 struct ram_dev_data ram_data;
 
 struct raw_file_disk_data {
+#ifdef USE_LINUX
+    int disk_fp;
+#else
     FILE *disk_fp;
+#endif
 };
 struct raw_file_disk_data raw_file_data;
 
@@ -47,11 +58,19 @@ int open_disk(struct blkdev *bdev, int flags)
 {
     struct raw_file_disk_data *data = (struct raw_file_disk_data *)bdev->data;
 
+#ifdef USE_LINUX
+    data->disk_fp = open("disk.vhd", O_RDWR);
+    if (!data->disk_fp) {
+        printf("disk file 'disk.vhd' not found!\n");
+        return -1;
+    }
+#else
     data->disk_fp = fopen("disk.vhd", "r+b");
     if (!data->disk_fp) {
         printf("disk file 'disk.vhd' not found!\n");
         return -1;
     }
+#endif
 
     return 0;
 }
@@ -70,8 +89,13 @@ int close_disk(struct blkdev *bdev)
 {    
     struct raw_file_disk_data *data = (struct raw_file_disk_data *)bdev->data;
 
+#ifdef USE_LINUX
+    close(data->disk_fp);
+    data->disk_fp = -1;
+#else
     fclose(data->disk_fp);
     data->disk_fp = NULL;
+#endif
     return 0;
 }
 
@@ -101,8 +125,15 @@ int read_disk(struct blkdev *bdev, unsigned long lba, void *buf, unsigned long s
 {
     struct raw_file_disk_data *data = (struct raw_file_disk_data *)bdev->data;
 
+    // printf("[IO/R] lba %d sectors %d\n", lba, sectors);
+
+#ifdef USE_LINUX
+    lseek(data->disk_fp, lba * bdev->blksz, SEEK_SET);
+    read(data->disk_fp, buf, bdev->blksz * sectors);
+#else
     fseek(data->disk_fp, lba * bdev->blksz, SEEK_SET);
-    fread(buf, 1, bdev->blksz, data->disk_fp);
+    fread(buf, sectors, bdev->blksz, data->disk_fp);
+#endif
 
     return 0;
 }
@@ -111,8 +142,15 @@ int write_disk(struct blkdev *bdev, unsigned long lba, void *buf, unsigned long 
 {    
     struct raw_file_disk_data *data = (struct raw_file_disk_data *)bdev->data;
 
+    // printf("[IO/W] lba %d sectors %d\n", lba, sectors);
+
+#ifdef USE_LINUX
+    lseek(data->disk_fp, lba * bdev->blksz, SEEK_SET);
+    write(data->disk_fp, buf, bdev->blksz * sectors);
+#else
     fseek(data->disk_fp, lba * bdev->blksz, SEEK_SET);
-    fwrite(buf, 1, bdev->blksz, data->disk_fp);
+    fwrite(buf, sectors, bdev->blksz, data->disk_fp);
+#endif
 
     return 0;
 }
@@ -130,16 +168,11 @@ __IO long write_block(struct blkdev *bdev, unsigned long blk, unsigned long off,
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    unsigned char sec_buf[SECTOR_SIZE];
-    memset(sec_buf, 0, SECTOR_SIZE);
+    // len must SECTOR_SIZE align
 
     int nsectors = BLOCK_SIZE / SECTOR_SIZE;
-
-    for (i = 0; i < nsectors; i++) {
-        memcpy(sec_buf, p, SECTOR_SIZE);
-        bdev->write(bdev, blk * nsectors + i, sec_buf, 1);
-        p += SECTOR_SIZE;
-    }
+    // convert block to sector lba
+    bdev->write(bdev, blk * nsectors, p, len / SECTOR_SIZE);
 
     return len;
 }
@@ -151,16 +184,12 @@ __IO long read_block(struct blkdev *bdev, unsigned long blk, unsigned long off, 
     if (blk >= MAX_BLOCK_NR)
         return -1;
 
-    unsigned char sec_buf[SECTOR_SIZE];
-    memset(sec_buf, 0, SECTOR_SIZE);
+    // len must SECTOR_SIZE align
 
     int nsectors = BLOCK_SIZE / SECTOR_SIZE;
 
-    for (i = 0; i < nsectors; i++) {
-        bdev->read(bdev, blk * nsectors + i, sec_buf, 1);
-        memcpy(p, sec_buf, SECTOR_SIZE);
-        p += SECTOR_SIZE;
-    }
+    // convert block to sector lba
+    bdev->read(bdev, blk * nsectors, p, len / SECTOR_SIZE);
 
     return len;
 }

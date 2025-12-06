@@ -27,7 +27,7 @@
 
 #define __IO
 
-#define BLOCK_DATA_SIZE (16 * 1024 * 1024) // 16 MB
+#define BLOCK_DATA_SIZE (128 * 1024 * 1024) // 128 MB
 #define MAX_BLOCK_NR (BLOCK_DATA_SIZE / BLOCK_SIZE)
 
 #define SECTOR_SIZE 512

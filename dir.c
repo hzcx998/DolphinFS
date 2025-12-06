@@ -156,7 +156,7 @@ int check_component_exists(struct super_block *sb, const char* base_path, const 
     }
     
     // 检查路径是否存在
-    printf("check_component_exists: %s\n", full_path);
+    // printf("check_component_exists: %s\n", full_path);
     if (stat_file(sb, full_path, &stat_buf) != 0) {
         return -1; // 路径不存在
     }
@@ -217,7 +217,7 @@ static int touch_dir_file(struct super_block *sb, const char *path)
     // fill head info if file not exist
     if (fill_head) {
         struct fs_dir_head head;
-        printf("[INFO] touch dir, fill head info of %s\n", path);
+        // printf("[INFO] touch dir, fill head info of %s\n", path);
     
         head.count = 0;
         memset(head.bitmap, 0, sizeof(head.bitmap));
@@ -542,7 +542,7 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
     
     clean_path(path, full_path, sizeof(full_path));
 
-    printf("clean path: %s\n", full_path);
+    // printf("clean path: %s\n", full_path);
     
     pos = full_path;
     // 初始化组件提取
@@ -573,35 +573,35 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
         
         switch (result) {
             case 0:
-                printf("  ✓ 组件存在且是目录: %s\n", new_path);
+                // printf("  ✓ 组件存在且是目录: %s\n", new_path);
                 strcpy(current_path, new_path); // 更新当前路径
 
                 // 如果是最后一个组件，并且是创建目录，说明已经存在，不能再创建了，就返回报错。
                 if ((flags & DIR_WALK_CREATE_NOT_EXIST) && !(pos != NULL && pos[0] != '\0')) {
-                    printf("[ERROR] 创建目录，但已经存在，不允许创建: %s\n", new_path);
+                    // printf("[ERROR] 创建目录，但已经存在，不允许创建: %s\n", new_path);
                     return -1;
                 }
                 if ((flags & DIR_WALK_CREATE_FILE_NOT_EXIST) && !(pos != NULL && pos[0] != '\0')) {
-                    printf("[ERROR] 创建文件，但已经存在，不允许创建: %s\n", new_path);
+                    // printf("[ERROR] 创建文件，但已经存在，不允许创建: %s\n", new_path);
                     return -1;
                 }
                 break;
                 
             case -1:
-                printf("  ✗ 组件不存在: %s, 全路径：%s\n", component, new_path);
-                printf("在层级 %d 处停止: %s 不存在\n", level, component);
+                // printf("  ✗ 组件不存在: %s, 全路径：%s\n", component, new_path);
+                // printf("在层级 %d 处停止: %s 不存在\n", level, component);
 
                 // CREATE DIR hear
                 if (flags & DIR_WALK_CREATE_NOT_EXIST) {
-                    printf("---> 打开目录文件：%s，写入组件信息：%s\n", current_path, component);
+                    // printf("---> 打开目录文件：%s，写入组件信息：%s\n", current_path, component);
                     if (create_new_dir(sb, new_path, current_path, component)) {
                         return -1;
                     }
 
-                    printf("  ✓ 组件不存在但创建了新目录: %s\n", new_path);
+                    // printf("  ✓ 组件不存在但创建了新目录: %s\n", new_path);
                     strcpy(current_path, new_path); // 更新当前路径
                 } else if ((flags & DIR_WALK_CREATE_FILE_NOT_EXIST) && !(pos != NULL && pos[0] != '\0')) {
-                    printf("---> 文件不存在创建新文件：%s\n", new_path);
+                    // printf("---> 文件不存在创建新文件：%s\n", new_path);
                     struct file *f;
                     if (create_new_file(sb, new_path, current_path, component, mode)) {
                         return -1;
@@ -611,8 +611,8 @@ int walk_dir(struct super_block *sb, const char *path, int flags, int mode, stru
                 }
                 break;
             case -2:
-                printf("  ✗ 路径存在但不是目录: %s\n", new_path);
-                printf("在层级 %d 处停止: %s 不是目录\n", level, component);
+                // printf("  ✗ 路径存在但不是目录: %s\n", new_path);
+                // printf("在层级 %d 处停止: %s 不是目录\n", level, component);
                 return -2;
         }
         level++;
@@ -820,7 +820,6 @@ int read_dir(int dir, struct fs_dir_entry *de)
     long len;
 
     struct fs_dir_entry tmp;
-
     /* get head info */
     if (load_dir_head(&head, od->fd)) {
         return -1;

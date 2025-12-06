@@ -1,1 +1,1 @@
-gcc *.c -I./ -o dolpfs -w
+gcc -g -fno-omit-frame-pointer *.c -I./ -o dolpfs -w 
