@@ -5,6 +5,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "dolphinfs.h"
+
 struct fs_dir_open open_dirs[MAX_OPEN_DIR] = {0};
 
 struct fs_dir_open *alloc_open_dir(void)
@@ -169,31 +171,52 @@ int check_component_exists(struct super_block *sb, const char* base_path, const 
     return 0; // 存在且是目录
 }
 
-static int load_dir_head(struct fs_dir_head *head, int fd)
+static int load_dir_meta(struct fs_dir_meta *meta, int fd)
 {
+    int bytes_of_index;
     /* seek to head */
     if (seek_file(fd, 0, FP_SET) != 0) {
         return -1;
     }
-
-    if (read_file(fd, head, sizeof(struct fs_dir_head)) != sizeof(struct fs_dir_head)) {
+    if (read_file(fd, &meta->head, sizeof(struct fs_dir_head)) != sizeof(struct fs_dir_head)) {
         return -1;
     }
 
+    if (meta->head.max_index > 0) {
+        bytes_of_index = DIV_ROUND_UP(meta->head.max_index, DIR_BITMAP_ITEM_SIZE) * sizeof(unsigned int);
+        if (read_file(fd, &meta->body, bytes_of_index) != bytes_of_index) {
+            return -1;
+        }
+    }
+    
     return 0;
 }
 
-static int sync_dir_head(struct fs_dir_head *head, int fd)
+static int sync_dir_meta(struct fs_dir_meta *meta, int fd, char is_full)
 {
+    int bytes_of_index;
     /* seek to head */
     if (seek_file(fd, 0, FP_SET) != 0) {
         return -1;
     }
 
-    if (write_file(fd, head, sizeof(struct fs_dir_head)) != sizeof(struct fs_dir_head)) {
-        return -1;
-    }
+    if (!is_full) {
+        if (write_file(fd, &meta->head, sizeof(struct fs_dir_head)) != sizeof(struct fs_dir_head)) {
+            return -1;
+        }
 
+        if (meta->head.max_index > 0) {
+            bytes_of_index = DIV_ROUND_UP(meta->head.max_index, DIR_BITMAP_ITEM_SIZE) * sizeof(unsigned int);
+            if (write_file(fd, &meta->body, bytes_of_index) != bytes_of_index) {
+                return -1;
+            }
+        }
+    } else {
+        if (write_file(fd, meta, sizeof(struct fs_dir_meta)) != sizeof(struct fs_dir_meta)) {
+            return -1;
+        }
+    }
+    
     return 0;
 }
 
@@ -216,13 +239,12 @@ static int touch_dir_file(struct super_block *sb, const char *path)
 
     // fill head info if file not exist
     if (fill_head) {
-        struct fs_dir_head head;
+        struct fs_dir_meta meta;
         // printf("[INFO] touch dir, fill head info of %s\n", path);
     
-        head.count = 0;
-        memset(head.bitmap, 0, sizeof(head.bitmap));
+        memset(&meta, 0, sizeof(meta));
 
-        if (sync_dir_head(&head, fd)) {
+        if (sync_dir_meta(&meta, fd, 1)) {
             close_file(fd);
             return -1;
         }
@@ -253,49 +275,57 @@ static int rm_dir_file(struct super_block *sb, const char *path)
     return delete_file(sb, path);    
 }
 
-static int alloc_dir_bitmap(struct fs_dir_head *head)
+static int alloc_dir_bitmap(struct fs_dir_meta *meta)
 {
     int i, j;
     unsigned int *bit;
+    int idx;
 
     for (i = 0; i < DIR_BITMAP_SIZE; i++) {
-        bit = &head->bitmap[i];
+        bit = &meta->body.bitmap[i];
         for (j = 0; j < DIR_BITMAP_ITEM_SIZE; j++) {
             if (!(*bit & (1 << j))) {
                 *bit |= (1 << j);
-                return i * DIR_BITMAP_ITEM_SIZE + j;
+                idx = i * DIR_BITMAP_ITEM_SIZE + j;
+                if (idx >= meta->head.max_index) {
+                    meta->head.max_index = idx + 1;
+                }
+                return idx;
             }
         }
     }
     return -1;
 }
 
-static int find_dir_bitmap_next(struct fs_dir_head *head, int start)
+static int find_dir_bitmap_next(struct fs_dir_meta *meta, int start)
 {
     int i, j;
     unsigned int *bit;
+    int idx;
 
     i = start / DIR_BITMAP_ITEM_SIZE;
     j = start % DIR_BITMAP_ITEM_SIZE;
 
     for (; i < DIR_BITMAP_SIZE; i++) {
-        bit = &head->bitmap[i];
+        bit = &meta->body.bitmap[i];
         for (; j < DIR_BITMAP_ITEM_SIZE; j++) {
             if ((*bit & (1 << j)) != 0) {
-                return i * DIR_BITMAP_ITEM_SIZE + j;
+                idx = i * DIR_BITMAP_ITEM_SIZE + j;
+                return (idx < meta->head.max_index) ? idx : -1;
             }
         }
+        j = 0;
     }
     return -1;
 }
 
-static int find_dir_bitmap_by_name(struct fs_dir_head *head, char *name, int fd)
+static int find_dir_bitmap_by_name(struct fs_dir_meta *meta, char *name, int fd)
 {
     struct fs_dir_entry de;
     int idx;
 
     // seek to head
-    if (seek_file(fd, sizeof(struct fs_dir_head), FP_SET) != sizeof(struct fs_dir_head)) {
+    if (seek_file(fd, sizeof(struct fs_dir_meta), FP_SET) != sizeof(struct fs_dir_meta)) {
         return -1;
     }
     
@@ -310,33 +340,37 @@ static int find_dir_bitmap_by_name(struct fs_dir_head *head, char *name, int fd)
     return -1;
 }
 
-static int free_dir_bitmap(struct fs_dir_head *head, int idx)
+static int free_dir_bitmap(struct fs_dir_meta *meta, int idx)
 {
     int i, j;
     
+    if (idx >= meta->head.max_index) {
+        return -1;
+    }
+
     i = idx / DIR_BITMAP_ITEM_SIZE;
     j = idx % DIR_BITMAP_ITEM_SIZE;
     
-    head->bitmap[i] &= ~(1 << j);
+    meta->body.bitmap[i] &= ~(1 << j);
     return 0;
 }
 
-static int test_dir_bitmap(struct fs_dir_head *head, int idx)
+static int test_dir_bitmap(struct fs_dir_meta *meta, int idx)
 {
     int i, j;
     
     i = idx / DIR_BITMAP_ITEM_SIZE;
     j = idx % DIR_BITMAP_ITEM_SIZE;
     
-    return (head->bitmap[i] & (1 << j)) != 0;
+    return (meta->body.bitmap[i] & (1 << j)) != 0;
 }
 
-static int mod_dir_entry(struct fs_dir_head *head, int fd, struct fs_dir_entry *de, int bit)
+static int mod_dir_entry(struct fs_dir_meta *meta, int fd, struct fs_dir_entry *de, int bit)
 {
     long off;
 
     // calc file offset
-    off = sizeof(struct fs_dir_head) + bit * sizeof(struct fs_dir_entry);
+    off = sizeof(struct fs_dir_meta) + bit * sizeof(struct fs_dir_entry);
 
     if (seek_file(fd, off, FP_SET) != off) {
         return -1;
@@ -349,57 +383,57 @@ static int mod_dir_entry(struct fs_dir_head *head, int fd, struct fs_dir_entry *
     return 0;
 }
 
-static int add_dir_entry(struct fs_dir_head *head, int fd, struct fs_dir_entry *de)
+static int add_dir_entry(struct fs_dir_meta *meta, int fd, struct fs_dir_entry *de)
 {
     int bit;
     long off;
     // find a free dir entry to store
-    bit = alloc_dir_bitmap(head);
+    bit = alloc_dir_bitmap(meta);
     if (bit == -1) {
         return -1;
     }
 
-    if (mod_dir_entry(head, fd, de, bit)) {
-        free_dir_bitmap(head, bit);
+    if (mod_dir_entry(meta, fd, de, bit)) {
+        free_dir_bitmap(meta, bit);
         return -1;
     }
 
-    head->count++;
+    meta->head.count++;
 
-    if (sync_dir_head(head, fd)) {
-        free_dir_bitmap(head, bit);
+    if (sync_dir_meta(meta, fd, 0)) {
+        free_dir_bitmap(meta, bit);
         return -1;
     }
 
     return 0;
 }
 
-static int del_dir_entry(struct fs_dir_head *head, int fd, const char *dir_name)
+static int del_dir_entry(struct fs_dir_meta *meta, int fd, const char *dir_name)
 {
     int bit;
     long off;
     struct fs_dir_entry de;
 
     /* 遍历读取所有文件，匹配文件名，找对匹配的，并给出索引 */
-    bit = find_dir_bitmap_by_name(head, dir_name, fd);
+    bit = find_dir_bitmap_by_name(meta, dir_name, fd);
     if (bit == -1) {
         return -1;
     }
 
     /* 清理目录项 */
     memset(&de, 0, sizeof(de));
-    if (mod_dir_entry(head, fd, &de, bit)) {
+    if (mod_dir_entry(meta, fd, &de, bit)) {
         return -1;
     }
 
     /* 释放位图 */
-    if (free_dir_bitmap(head, bit)) {
+    if (free_dir_bitmap(meta, bit)) {
         return -1;
     }
 
-    head->count--;
+    meta->head.count--;
 
-    if (sync_dir_head(head, fd)) {
+    if (sync_dir_meta(meta, fd, 0)) {
         return -1;
     }
 
@@ -411,7 +445,7 @@ static int create_dir_entry(struct super_block *sb, const char *path, const char
     int fd;
     struct fs_dir_entry de;
     struct file_stat st;
-    struct fs_dir_head head;
+    struct fs_dir_meta meta;
     
     if (!strlen(name)) {
         return 0; // if no name, just return
@@ -433,12 +467,13 @@ static int create_dir_entry(struct super_block *sb, const char *path, const char
         return -1;
     }
     
-    if (load_dir_head(&head, fd)) {
+    memset(&meta, 0, sizeof(meta));
+    if (load_dir_meta(&meta, fd)) {
         close_file(fd);
         return -1;
     }
     
-    if (add_dir_entry(&head, fd, &de)) {
+    if (add_dir_entry(&meta, fd, &de)) {
         close_file(fd);
         return -1;
     }
@@ -491,7 +526,7 @@ static struct fs_dir_open *load_dir_info(struct super_block *sb, const char *pat
         free_open_dir(od);
         return NULL;
     }
-    od->offset = sizeof(struct fs_dir_head);
+    od->offset = sizeof(struct fs_dir_meta);
     
     return od;
 }
@@ -675,7 +710,7 @@ static int split_dir_path(const char *path, char *parent_name, char *dir_name)
 static int remove_parent_dir_entry(struct super_block *sb, const char *path)
 {
     int fd;
-    struct fs_dir_head head;
+    struct fs_dir_meta meta;
     char parent_dir[FILE_NAME_LEN] = {0};
     char dir_name[FILE_NAME_LEN] = {0};
 
@@ -688,12 +723,13 @@ static int remove_parent_dir_entry(struct super_block *sb, const char *path)
         return -1;
     }
     
-    if (load_dir_head(&head, fd)) {
+    memset(&meta, 0, sizeof(meta));
+    if (load_dir_meta(&meta, fd)) {
         close_file(fd);
         return -1;
     }
     
-    if (del_dir_entry(&head, fd, dir_name)) {
+    if (del_dir_entry(&meta, fd, dir_name)) {
         close_file(fd);
         return -1;
     }
@@ -705,7 +741,7 @@ static int remove_parent_dir_entry(struct super_block *sb, const char *path)
 static int check_dir_empty(struct super_block *sb, const char *path)
 {
     int fd;
-    struct fs_dir_head head;
+    struct fs_dir_meta meta;
     char parent_dir[FILE_NAME_LEN] = {0};
     char dir_name[FILE_NAME_LEN] = {0};
 
@@ -714,21 +750,21 @@ static int check_dir_empty(struct super_block *sb, const char *path)
         return -1;
     }
     
-    if (load_dir_head(&head, fd)) {
+    memset(&meta, 0, sizeof(meta));
+    if (load_dir_meta(&meta, fd)) {
         close_file(fd);
         return -1;
     }
     
     close_file(fd);
 
-    return !head.count;
+    return !meta.head.count;
 }
 
 int delete_dir(struct super_block *sb, const char *path)
 {
     // check dir empty
     struct file_stat stat_buf;
-    struct fs_dir_head head;
     int fd;
     
     if (stat_file(sb, path, &stat_buf) != 0) {
@@ -765,7 +801,6 @@ int del_file(struct super_block *sb, const char *path)
 {
     // check dir empty
     struct file_stat stat_buf;
-    struct fs_dir_head head;
     int fd;
     
     if (stat_file(sb, path, &stat_buf) != 0) {
@@ -813,7 +848,7 @@ int close_dir(int dir)
 int read_dir(int dir, struct fs_dir_entry *de)
 {
     struct fs_dir_open *od;
-    struct fs_dir_head head;
+    struct fs_dir_meta meta;
     int idx;
 
     od = idx_odir(dir);
@@ -821,23 +856,24 @@ int read_dir(int dir, struct fs_dir_entry *de)
 
     struct fs_dir_entry tmp;
     /* get head info */
-    if (load_dir_head(&head, od->fd)) {
+    memset(&meta, 0, sizeof(meta));
+    if (load_dir_meta(&meta, od->fd)) {
         return -1;
     }
     
-    if (!head.count) {
+    if (!meta.head.count) {
         return -1;
     }
 
     /* check offset has entry */
-    idx = (od->offset - sizeof(struct fs_dir_head)) / sizeof(struct fs_dir_entry);
-    if (!test_dir_bitmap(&head, idx)) {
+    idx = (od->offset - sizeof(struct fs_dir_meta)) / sizeof(struct fs_dir_entry);
+    if (!test_dir_bitmap(&meta, idx)) {
         // find next bitmap
-        idx = find_dir_bitmap_next(&head, idx);
+        idx = find_dir_bitmap_next(&meta, idx);
         if (idx == -1) {
             return -1; // no direnty
         }
-        od->offset = sizeof(struct fs_dir_head) + idx * sizeof(struct fs_dir_entry);
+        od->offset = sizeof(struct fs_dir_meta) + idx * sizeof(struct fs_dir_entry);
     }
 
     seek_file(od->fd, od->offset, FP_SET);
@@ -858,7 +894,7 @@ int seek_dir(int dir, int pos)
     od = idx_odir(dir);
     long offset;
     
-    offset = sizeof(struct fs_dir_head) + pos * sizeof(struct fs_dir_entry);
+    offset = sizeof(struct fs_dir_meta) + pos * sizeof(struct fs_dir_entry);
 
     if (offset < 0) {
         offset = 0;
@@ -881,7 +917,7 @@ int list_dir(struct super_block *sb, const char *path)
     
     printf("PATH: %s\n", path);
     printf("NUM     TYPE     NAME\n", de.fname.buf, de.type, de.num);
-    while (!read_dir(dir, &de))
+    while (read_dir(dir, &de) != -1)
     {
         printf("%8d %8d %s\n", de.num, de.type, de.fname.buf);
     }

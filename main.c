@@ -307,8 +307,8 @@ end:
 
 static int get_one_dir(struct super_block *sb, const char* src_path, const char* dest_path)
 {
-    char src_buf[256];
-    char dst_buf[256];
+    char src_buf[256] = {0};
+    char dst_buf[256] = {0};
 
     int dir = open_dir(sb, src_path);
     if (dir < 0)
@@ -319,9 +319,9 @@ static int get_one_dir(struct super_block *sb, const char* src_path, const char*
 
     struct fs_dir_entry de;
     
-    while (!read_dir(dir, &de))
+    while (read_dir(dir, &de) != -1)
     {
-        // printf("%8d %8d %s\n", de.num, de.type, de.fname.buf);
+        // printf("---> %8d %8d %s\n", de.num, de.type, de.fname.buf);
         // build path
         memset(src_buf, 0, sizeof(src_buf));
         snprintf(src_buf, sizeof(src_buf), "%s/%s", src_path, de.fname.buf);
