@@ -1,5 +1,6 @@
 #include <dolphinfs.h>
 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +44,7 @@ long alloc_block(struct super_block *sb)
 retry:
     for (; next < end; next++) {
         memset(allocator_io_block, 0, sizeof(allocator_io_block));
-        read_block(sb->blkdev, next, 0, allocator_io_block, sizeof(allocator_io_block));
+        cached_read_block(sb->blkdev, next, allocator_io_block);
         
         data_block_id = scan_free_bits(allocator_io_block, sb->block_size);
         /* 扫描成功 */
@@ -55,7 +56,7 @@ retry:
             /* 标记下一个空闲块 */
             sb->next_free_man_block = next;
             
-            write_block(sb->blkdev, next, 0, allocator_io_block, sizeof(allocator_io_block));
+            cached_write_block(sb->blkdev, next, allocator_io_block);
 
             // printf("---> alloc block:%ld\n", data_block_id + sb->block_off[BLOCK_AREA_DATA]);
             if (data_block_id < sb->block_nr[BLOCK_AREA_DATA]) {
@@ -63,7 +64,7 @@ retry:
                 /* 更新超级块 */
                 memset(allocator_io_block, 0, sizeof(allocator_io_block));
                 memcpy(allocator_io_block, sb, sizeof(*sb));
-                write_block(sb->blkdev, sb->block_off[BLOCK_AREA_SB], 0, allocator_io_block, sizeof(allocator_io_block));
+                cached_write_block(sb->blkdev, sb->block_off[BLOCK_AREA_SB], allocator_io_block);
 
                 return data_block_id + sb->block_off[BLOCK_AREA_DATA]; // 返回的块是绝对块地址
             } else {
@@ -112,11 +113,11 @@ int free_block(struct super_block *sb, long blk)
     man_block += sb->block_off[BLOCK_AREA_MAN];
 
     memset(allocator_io_block, 0, sizeof(allocator_io_block));
-    read_block(sb->blkdev, man_block, 0, allocator_io_block, sizeof(allocator_io_block));
+    cached_read_block(sb->blkdev, man_block, allocator_io_block);
 
     allocator_io_block[byte_off] &= ~(1 << bits_off);
     /* 修改块 */
-    write_block(sb->blkdev, man_block, 0, allocator_io_block, sizeof(allocator_io_block));
+    cached_write_block(sb->blkdev, man_block, allocator_io_block);
 
     return 0;
 }
@@ -163,7 +164,7 @@ void init_man(struct super_block *sb)
     end = start + sb->block_nr[BLOCK_AREA_MAN];
     for (; start < end; start++) {
         memset(generic_io_block, 0, sizeof(generic_io_block));
-        write_block(sb->blkdev, start, 0, generic_io_block, sizeof(generic_io_block));
+        cached_write_block(sb->blkdev, start, generic_io_block);
     }
 }
 
@@ -211,7 +212,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     
     memset(generic_io_block, 0, sizeof(generic_io_block));
     for (i = 0; i < file_bmap_blocks; i++) {
-        write_block(sb->blkdev, sb->file_bitmap_start + i, 0, generic_io_block, sizeof(generic_io_block));
+        cached_write_block(sb->blkdev, sb->file_bitmap_start + i, generic_io_block);
     }
 
     /**
@@ -227,7 +228,7 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     }
     sb->file_info_end = sb->file_info_start + file_info_blocks;
     for (i = 0; i < file_info_blocks; i++) {
-        write_block(sb->blkdev, sb->file_info_start + i, 0, generic_io_block, sizeof(generic_io_block));
+        cached_write_block(sb->blkdev, sb->file_info_start + i, generic_io_block);
     }
 
     /**
@@ -243,6 +244,6 @@ void init_file_info(struct super_block *sb, unsigned long file_count)
     }
     sb->file_name_end = sb->file_name_start + file_name_blocks;
     for (i = 0; i < file_name_blocks; i++) {
-        write_block(sb->blkdev, sb->file_name_start + i, 0, generic_io_block, sizeof(generic_io_block));
+        cached_write_block(sb->blkdev, sb->file_name_start + i, generic_io_block);
     }
 }

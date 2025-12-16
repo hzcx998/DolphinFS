@@ -149,12 +149,11 @@ void test_fs(char *device)
 int cmd_test(void)
 {
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     test_fs(TEST_RAM_DEV);
     test_fs(TEST_DISK_DEV);
 
-    exit_blkdev();
+    dolphin_exit();
     return 0;
 }

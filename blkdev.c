@@ -1,4 +1,5 @@
 #include <dolphinfs.h>
+#include <blkcache.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -194,6 +195,40 @@ __IO long read_block(struct blkdev *bdev, unsigned long blk, unsigned long off, 
     return len;
 }
 
+/**
+ * 使用缓存的块读取函数
+ */
+__IO long cached_read_block(struct blkdev *bdev, unsigned long blk, void *buf)
+{
+    if (!bdev || !buf) {
+        return -1;
+    }
+    
+    // 对于单个块，直接使用缓存
+    return blk_cache_read(bdev, blk, buf, BLOCK_SIZE);
+}
+
+/**
+ * 使用缓存的块写入函数
+ */
+__IO long cached_write_block(struct blkdev *bdev, unsigned long blk, void *buf)
+{
+    if (!bdev || !buf) {
+        return -1;
+    }
+    
+    // 对于单个块，直接使用缓存
+    return blk_cache_write(bdev, blk, buf, BLOCK_SIZE);
+}
+
+/**
+ * 同步缓存的块
+ */
+int sync_cached_blocks(struct blkdev *bdev)
+{
+    return blk_cache_sync(bdev);
+}
+
 static struct blkdev ram_bdev = {
     .name = "ram",
     .blksz = SECTOR_SIZE,
@@ -252,6 +287,21 @@ void list_blkdev(void)
         if (bdev != NULL) {
             printf("dev name:%s capacity:%d, blksz:%d read:%s, write:%s\n",
                 bdev->name, bdev->blkcnt, bdev->blksz, bdev->read ? "Y" : "N", bdev->write ? "Y" : "N");
+        }
+    }
+    return -1;
+}
+
+void sync_all_blkdev(void)
+{
+    int i;
+    struct blkdev *bdev;
+    for (i = 0; i < MAX_BLOCK_DEV_NR; i++) {
+        bdev = blk_dev[i];
+        if (bdev != NULL) {
+            printf("sync block dev name:%s capacity:%d, blksz:%d read:%s, write:%s\n",
+                bdev->name, bdev->blkcnt, bdev->blksz, bdev->read ? "Y" : "N", bdev->write ? "Y" : "N");
+            sync_cached_blocks(bdev);
         }
     }
     return -1;

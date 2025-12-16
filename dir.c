@@ -787,7 +787,7 @@ int delete_dir(struct super_block *sb, const char *path)
         return -1;
     }
 
-    printf("[ERROR] ready delete dir %s.\n", path);
+    printf("[INFO] ready delete dir %s.\n", path);
 
     /* remove dir entry from parent dir */
     if (remove_parent_dir_entry(sb, path)) {

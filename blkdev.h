@@ -57,5 +57,13 @@ extern struct blkdev *search_blkdev(char *name);
 void init_blkdev(void);
 void exit_blkdev(void);
 void list_blkdev(void);
+void sync_all_blkdev(void);
+
+/**
+ * 使用缓存的块读写函数
+ */
+extern __IO long cached_read_block(struct blkdev *bdev, unsigned long blk, void *buf);
+extern __IO long cached_write_block(struct blkdev *bdev, unsigned long blk, void *buf);
+extern int sync_cached_blocks(struct blkdev *bdev);
 
 #endif /* _BLKDEV_H */

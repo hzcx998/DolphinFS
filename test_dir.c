@@ -137,12 +137,11 @@ void test_fs_dir(char *device)
 int cmd_test_dir(void)
 {
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     test_fs_dir(TEST_RAM_DEV);
     test_fs_dir(TEST_DISK_DEV);
 
-    exit_blkdev();
+    dolphin_exit();
     return 0;
 }

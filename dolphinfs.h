@@ -23,4 +23,7 @@ int dolphin_mkfs(char *disk, struct super_block *sb);
 int dolphin_mount(char *disk, struct super_block *sb);
 int dolphin_unmount(struct super_block *sb);
 
+int dolphin_init(void);
+int dolphin_exit(void);
+
 #endif

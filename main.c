@@ -35,8 +35,7 @@ int cmd_mkfs(void) {
     printf("Creating file system\n");
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -63,7 +62,7 @@ int cmd_mkfs(void) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("Create filesystem success.\n");
 
@@ -196,8 +195,7 @@ int cmd_put(const char* src_path, const char* dest_path) {
     printf("[++++++++] Copying %s to %s in the file system\n", src_path, dest_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
     int ret = 0;
@@ -239,7 +237,7 @@ end:
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("[++++++++] File %s put to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
     return ret; // Return 0 to indicate success
@@ -360,8 +358,7 @@ int cmd_get(const char* src_path, const char* dest_path) {
     printf("[--------] Get %s from the file system to %s\n", src_path, dest_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
     int ret = 0;
@@ -405,7 +402,7 @@ end:
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("[--------] File %s get to %s %s\n", src_path, dest_path, ret == 0 ? "successfully" : "failed");
     return 0; // Return 0 to indicate success
@@ -416,8 +413,7 @@ int cmd_list(const char* dir_path) {
     printf("Listing %s in the file system\n", dir_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -437,7 +433,7 @@ int cmd_list(const char* dir_path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("List filesystem success.\n");
 
@@ -449,8 +445,7 @@ int cmd_cat(const char* path) {
     printf("Cat %s in the file system\n", path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -480,7 +475,7 @@ int cmd_cat(const char* path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("Cat %s done.\n", path);
 
@@ -492,8 +487,7 @@ int cmd_delete_file(const char* file_path) {
     printf("Deleting %s in the file system\n", file_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -517,7 +511,7 @@ int cmd_delete_file(const char* file_path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     return 0; // Return 0 to indicate success
 }
@@ -527,8 +521,7 @@ int cmd_copy(const char* src_path, const char* dest_path) {
     printf("Copying %s to %s in the file system\n", src_path, dest_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
     int ret = 0;
 
     struct super_block dolphin_sb;
@@ -592,7 +585,7 @@ end:
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("File %s copied to %s %s\n", src_path, dest_path, !ret ? "successfully" : "failed");
     return 0; // Return 0 to indicate success
@@ -603,8 +596,7 @@ int cmd_move(const char* src_path, const char* dest_path) {
     printf("Moving %s to %s in the file system\n", src_path, dest_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -624,7 +616,7 @@ int cmd_move(const char* src_path, const char* dest_path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     return 0; // Return 0 to indicate success
 }
@@ -634,8 +626,7 @@ int cmd_mkdir(const char* dir_path) {
     printf("Creating directory %s.\n", dir_path);
     
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -655,7 +646,7 @@ int cmd_mkdir(const char* dir_path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("Creating directory %s success.\n", dir_path);
 
@@ -667,8 +658,7 @@ int cmd_rmdir(const char* dir_path) {
     printf("Remove directory %s.\n", dir_path);
 
     /* init disk */
-    init_blkdev();
-    list_blkdev();
+    dolphin_init();
 
     struct super_block dolphin_sb;
 
@@ -688,7 +678,7 @@ int cmd_rmdir(const char* dir_path) {
     /* 挂载成功 */
     dolphin_unmount(&dolphin_sb);
 
-    exit_blkdev();
+    dolphin_exit();
 
     printf("Remove directory %s success.\n", dir_path);
 

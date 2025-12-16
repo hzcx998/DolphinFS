@@ -1,5 +1,6 @@
 #include <dolphinfs.h>
 #include <file.h>
+#include <blkcache.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,7 +37,7 @@ int dolphin_mkfs(char *disk, struct super_block *sb)
     /* write sb info to disk */
     memset(generic_io_block, 0, sizeof(generic_io_block));
     memcpy(generic_io_block, sb, sizeof(*sb));
-    write_block(bdev, sb->block_off[BLOCK_AREA_SB], 0, generic_io_block, sizeof(generic_io_block));
+    cached_write_block(bdev, sb->block_off[BLOCK_AREA_SB], generic_io_block);
 
     dump_sb(sb);
 
@@ -60,7 +61,7 @@ int dolphin_mount(char *disk, struct super_block *sb)
 
     sb->blkdev = bdev;
     memset(generic_io_block, 0, sizeof(generic_io_block));
-    read_block(bdev, 0, 0, generic_io_block, sizeof(generic_io_block));
+    cached_read_block(bdev, 0, generic_io_block);
     memcpy(sb, generic_io_block, sizeof(struct super_block));
     /* 再次读取设备 */
     sb->blkdev = bdev;
@@ -76,8 +77,23 @@ int dolphin_mount(char *disk, struct super_block *sb)
 int dolphin_unmount(struct super_block *sb)
 {
     /* sync all to disk */
+    sync_all_blkdev();
 
     close_blkdev(sb->blkdev);
     sb->blkdev = NULL;
     return 0;
+}
+
+int dolphin_init(void)
+{
+    init_blkdev();
+    list_blkdev();
+    blk_cache_init();
+}
+
+int dolphin_exit(void)
+{
+    sync_all_blkdev();
+    blk_cache_exit();
+    exit_blkdev();
 }
