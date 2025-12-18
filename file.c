@@ -289,7 +289,7 @@ struct file *create_file(struct super_block *sb, char *path, int mode)
     f->ref = 0;
     f->mode = mode;
     f->file_size = 0;
-    if (f->data_table < 0) {
+    if (!f->data_table) {
         free_file(f, 0);
         return NULL;
     }
@@ -452,6 +452,9 @@ long get_file_block(struct file *f, unsigned long off)
     l1_val = l1[GET_BGD_OFF(off)];
     if (!l1_val) { // alloc BMD block
         l1_val = alloc_data_block(sb);
+        if (!l1_val) {
+            return -1;
+        }
         l1[GET_BGD_OFF(off)] = l1_val;
         // sync block
         cached_write_block(sb->blkdev, f->data_table, generic_io_block);
@@ -469,6 +472,9 @@ long get_file_block(struct file *f, unsigned long off)
     l2_val = l2[GET_BMD_OFF(off)];
     if (!l2_val) { // alloc data block
         l2_val = alloc_data_block(sb);
+        if (!l2_val) {
+            return -1;
+        }
         l2[GET_BMD_OFF(off)] = l2_val;
         // sync block
         cached_write_block(sb->blkdev, l1_val, generic_io_block);

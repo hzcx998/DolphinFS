@@ -504,7 +504,7 @@ static int create_new_file(struct super_block *sb, const char *path, const char 
     }
 
     if (create_dir_entry(sb, path, current_path, name, 0)) {
-        rm_dir_file(sb, path);
+        delete_file(sb, path);
         return -1;
     }
     return 0;
@@ -793,7 +793,7 @@ int delete_dir(struct super_block *sb, const char *path)
     if (remove_parent_dir_entry(sb, path)) {
         return -1;
     }
-    
+
     return delete_file(sb, path);
 }
 
@@ -823,7 +823,7 @@ int del_file(struct super_block *sb, const char *path)
     if (remove_parent_dir_entry(sb, path)) {
         return -1;
     }
-    
+
     return delete_file(sb, path);
 }
 

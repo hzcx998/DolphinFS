@@ -24,7 +24,7 @@ struct fs_dir_head {
 };
 struct fs_dir_body {
 #define DIR_BITMAP_ITEM_SIZE ((sizeof(unsigned int) * 8))
-#define DIR_BITMAP_SIZE (MAX_FILES / DIR_BITMAP_ITEM_SIZE)
+#define DIR_BITMAP_SIZE (FILES_PER_DIR / DIR_BITMAP_ITEM_SIZE)
     unsigned int bitmap[DIR_BITMAP_SIZE];
 };
 

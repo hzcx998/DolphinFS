@@ -54,6 +54,7 @@ int dolphin_mount(char *disk, struct super_block *sb)
     }
 
     if (open_blkdev(bdev, 0)) {
+        printf("failed to open blkdev %s\n", disk);
         return -1;
     }
 
@@ -68,6 +69,7 @@ int dolphin_mount(char *disk, struct super_block *sb)
     // dump_sb(sb);
 
     if (sb->magic != SUPER_BLOCK_MAGIC) {
+        printf("sb magic error %s\n", disk);
         return -1;
     }
 
